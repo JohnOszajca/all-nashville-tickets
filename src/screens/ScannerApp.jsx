@@ -3,7 +3,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { QrCode, Search, ChevronLeft, CheckCircle, ShieldCheck, Tag, Lock, LogOut, Camera, X } from 'lucide-react';
-import { QrReader } from 'react-qr-reader';
+import { Scanner } from '@yudiel/react-qr-scanner';
 
 export default function ScannerApp({ events, orders, db, appId }) {
   // --- AUTH STATE ---
@@ -33,12 +33,13 @@ export default function ScannerApp({ events, orders, db, appId }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [scannedOrderId, setScannedOrderId] = useState(null); 
   const [highlightedIndex, setHighlightedIndex] = useState(null); 
-  const [isScanning, setIsScanning] = useState(false); // Controls camera visibility
+  const [isScanning, setIsScanning] = useState(false); 
 
   const scannedOrder = useMemo(() => 
       orders.find(o => o.id === scannedOrderId), 
   [orders, scannedOrderId]);
 
+  // --- LOGIN SCREEN ---
   if (!user || user.isAnonymous) {
       return (
           <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -50,7 +51,6 @@ export default function ScannerApp({ events, orders, db, appId }) {
                       <h2 className="text-2xl font-bold text-slate-900">Staff Access</h2>
                       <p className="text-slate-500">Please log in to access the scanner.</p>
                   </div>
-                  
                   <form onSubmit={handleLogin} className="space-y-4">
                       <div>
                           <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
@@ -68,11 +68,16 @@ export default function ScannerApp({ events, orders, db, appId }) {
       );
   }
 
-  const handleScanData = (data) => {
-      if (!data) return;
+  // --- SCAN HANDLER ---
+  const handleScanData = (results) => {
+      if (!results) return;
       
+      // The new library returns an array of results, we take the first one
+      const rawValue = results[0]?.rawValue;
+      if (!rawValue) return;
+
       // Format is "orderId:ticketIndex"
-      const parts = data.split(':');
+      const parts = rawValue.split(':');
       const oid = parts[0];
       const idx = parts[1];
 
@@ -83,8 +88,7 @@ export default function ScannerApp({ events, orders, db, appId }) {
           setHighlightedIndex(idx ? parseInt(idx) : null);
           setIsScanning(false); // Close camera on success
       } else {
-          // Optional: Add a toast or error sound here
-          alert("Order not found!");
+          alert("Order not found in this database!");
           setIsScanning(false);
       }
   };
@@ -130,21 +134,16 @@ export default function ScannerApp({ events, orders, db, appId }) {
                   <h3 className="font-bold text-lg">Scan QR Code</h3>
                   <button onClick={() => setIsScanning(false)} className="p-2 bg-slate-800 rounded-full"><X /></button>
               </div>
-              <div className="flex-grow flex items-center justify-center">
-                  <div className="w-full max-w-md aspect-square relative overflow-hidden bg-black">
-                      <QrReader
-                          onResult={(result, error) => {
-                              if (!!result) {
-                                  handleScanData(result?.text);
-                              }
-                          }}
-                          constraints={{ facingMode: 'environment' }}
-                          className="w-full h-full"
-                          videoContainerStyle={{paddingTop: 0}}
-                          videoStyle={{objectFit: 'cover'}}
+              <div className="flex-grow flex items-center justify-center bg-black">
+                  <div className="w-full max-w-md aspect-square relative">
+                      {/* The New Scanner Component */}
+                      <Scanner 
+                          onScan={handleScanData}
+                          components={{ audio: false, finder: false }} 
+                          styles={{ container: { width: '100%', height: '100%' } }}
                       />
-                      {/* Visual Guide */}
-                      <div className="absolute inset-0 border-2 border-amber-500 opacity-50 pointer-events-none m-12 rounded-xl"></div>
+                      {/* Visual Guide Box */}
+                      <div className="absolute inset-0 border-4 border-amber-500 opacity-50 pointer-events-none m-12 rounded-xl z-20"></div>
                   </div>
               </div>
               <div className="p-8 text-center text-slate-400">
@@ -209,17 +208,14 @@ export default function ScannerApp({ events, orders, db, appId }) {
       );
   }
 
-  // --- MAIN SCANNER LIST ---
   return (
     <div className="bg-slate-100 min-h-screen pb-20">
       <div className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-lg flex gap-2">
           <div className="relative flex-grow">
              <Search className="absolute left-3 top-3 text-slate-400" size={18} />
-             <input type="text" placeholder="Search..." className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-800 text-white border-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+             <input type="text" placeholder="Search Name, ID, or Email..." className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-800 text-white border-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>
-          <button onClick={() => setIsScanning(true)} className="bg-amber-500 text-white p-2.5 rounded-lg font-bold shadow-lg flex items-center justify-center">
-             <Camera size={20} />
-          </button>
+          <button onClick={() => auth.signOut()} className="text-xs text-slate-400 hover:text-white flex items-center ml-2"><LogOut size={14} className="mr-1"/> Exit</button>
       </div>
 
       <div className="p-4 space-y-4">
@@ -236,7 +232,6 @@ export default function ScannerApp({ events, orders, db, appId }) {
          )}
       </div>
       
-      {/* Floating Action Button for Camera (Easy access on mobile) */}
       <button 
         onClick={() => setIsScanning(true)}
         className="fixed bottom-6 right-6 w-16 h-16 bg-amber-500 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition z-50"
