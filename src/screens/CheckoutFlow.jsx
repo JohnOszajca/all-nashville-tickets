@@ -20,9 +20,18 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
   const params = new URLSearchParams(window.location.search);
   const isEmbed = params.get('mode') === 'embed';
 
+  // --- SCROLL TO TOP ON STEP CHANGE ---
+  useEffect(() => {
+    // 1. Scroll the iframe itself (internal)
+    window.scrollTo(0, 0);
+    
+    // 2. Send signal to parent website (external)
+    // This allows your WordPress/Wix site to know it should scroll up
+    window.parent.postMessage({ type: 'scrollToTop' }, '*');
+  }, [step]);
+
   const event = events.find(e => e.id === activeEventId);
 
-  // Helper to fetch live order for receipt
   const ReceiptFetcher = ({ orderId }) => {
     const [order, setOrder] = useState(null);
     useEffect(() => {
@@ -116,7 +125,7 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
       }).filter(i => i.qty > 0)
     ];
 
-    await new Promise(r => setTimeout(r, 1500)); // Simulate auth
+    await new Promise(r => setTimeout(r, 1500)); 
 
     const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
     await updateDoc(orderRef, {
@@ -126,7 +135,7 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
       financials: { ticketTotal, upgradeTotal, feeTotal, tax, total: grandTotal },
     });
 
-    setStep(4); // Go to Ticket Protection
+    setStep(4); 
     setIsProcessing(false);
   };
 
@@ -172,7 +181,6 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
       });
   };
 
-  // --- Step Renderers ---
   const renderStep1 = () => (
     <div className="animate-fade-in">
       <div className="mb-6">
@@ -426,7 +434,6 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
   const renderStep4 = () => {
       const config = event.protectionConfig || {};
       const percentage = config.percentage || 10;
-      // Protection Cost Logic: % of Subtotal (before fees/tax) or min $5
       const protectionCost = Math.max(5, Math.ceil(subtotalNoFee * (percentage / 100)));
       
       return (
@@ -532,17 +539,14 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
       );
   };
 
-  // Step 6: Receipt (Handled by main render return below)
+  // Step 6: Receipt
   if (step === 6) {
       return <ReceiptFetcher orderId={orderId} />;
   }
 
   return (
-    // === THE FIX IS HERE: We switch bg-slate-100 for bg-transparent if isEmbed is true ===
     <div className={`min-h-screen pb-20 ${isEmbed ? 'bg-transparent' : 'bg-slate-100'}`}>
        {step <= 3 && (
-           // We assume you still want the progress bar to look like a white card?
-           // If not, we can make this transparent too. For now, this stays white.
            <div className="bg-white shadow-sm py-4 mb-6">
               <div className="max-w-xl mx-auto px-4 flex justify-between">
                   {[1,2,3].map(s => (

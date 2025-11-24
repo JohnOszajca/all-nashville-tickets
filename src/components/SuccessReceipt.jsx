@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, Printer, ShieldCheck, QrCode } from 'lucide-react';
+import { Printer, ShieldCheck, QrCode, CheckCircle } from 'lucide-react';
 
 export default function SuccessReceipt({ order, event }) {
   const allTickets = [];
@@ -30,9 +30,10 @@ export default function SuccessReceipt({ order, event }) {
 
   return (
     <div className="animate-fade-in max-w-2xl mx-auto pb-10">
+       {/* SCREEN ONLY HEADER */}
        <div className="bg-slate-900 text-white p-8 text-center rounded-t-xl no-print">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-green-500 rounded-full mb-4 shadow-lg">
-             <CheckCircle size={32} className="text-white" />
+          <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-4 overflow-hidden border-4 border-amber-500 shadow-lg">
+             <img src="/logo.jpg" alt="Logo" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-3xl font-bold mb-2">You're Going!</h1>
           <p className="text-slate-300">Order #{order.id?.slice(0,8)} confirmed.</p>
@@ -81,22 +82,28 @@ export default function SuccessReceipt({ order, event }) {
             )}
           </div>
 
-          {/* Individual Tickets Section */}
+          {/* INDIVIDUAL TICKETS (THIS IS WHAT PRINTS) */}
           <div>
-             <h3 className="font-bold text-lg mb-6 uppercase tracking-wide text-slate-500 text-center">Your Tickets</h3>
+             <h3 className="font-bold text-lg mb-6 uppercase tracking-wide text-slate-500 text-center no-print">Your Tickets</h3>
              <div className="space-y-6">
                 {allTickets.map((t) => (
-                    <div key={t.uniqueIndex} className="border-2 border-slate-900 rounded-xl overflow-hidden print-only break-inside-avoid">
+                    <div key={t.uniqueIndex} className="border-2 border-slate-900 rounded-xl overflow-hidden print-ticket break-inside-avoid page-break">
                         <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
-                            <div>
-                                <div className="font-bold text-lg">{event?.name || 'Event Ticket'}</div>
-                                <div className="text-xs text-slate-300">{event?.start ? new Date(event.start).toLocaleString() : ''}</div>
+                            <div className="flex items-center gap-4">
+                                {/* LOGO ADDED TO PRINTED TICKET */}
+                                <div className="w-12 h-12 bg-white rounded-full overflow-hidden border-2 border-amber-500">
+                                    <img src="/logo.jpg" alt="Logo" className="w-full h-full object-cover" />
+                                </div>
+                                <div>
+                                    <div className="font-bold text-lg">{event?.name || 'Event Ticket'}</div>
+                                    <div className="text-xs text-slate-300">{event?.start ? new Date(event.start).toLocaleString() : ''}</div>
+                                </div>
                             </div>
                             <div className="text-right">
                                 <div className="bg-white text-slate-900 text-xs font-bold px-2 py-1 rounded uppercase">{t.type}</div>
                             </div>
                         </div>
-                        <div className="p-4 flex justify-between items-center">
+                        <div className="p-4 flex justify-between items-center bg-white">
                             <div>
                                 <div className="text-slate-500 text-xs uppercase">Attendee</div>
                                 <div className="font-bold text-lg mb-2">{order.customer?.name}</div>
@@ -111,7 +118,7 @@ export default function SuccessReceipt({ order, event }) {
                             </div>
                         </div>
                         <div className="bg-slate-100 p-2 text-center text-xs text-slate-500 border-t">
-                            Present this specific code for entry.
+                            Present this code for entry. Valid for one scan only.
                         </div>
                     </div>
                 ))}
