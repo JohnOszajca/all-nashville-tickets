@@ -146,8 +146,11 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
     }
   };
 
+  // --- UPDATED EMBED MODAL ---
   const EmbedModal = ({ evtId, onClose }) => {
-    const code = `<iframe src="https://allnashville.com/tickets/${evtId}" width="100%" height="800" frameborder="0"></iframe>`;
+    // Uses the ACTUAL current website URL to generate the link
+    const appUrl = window.location.origin; 
+    const code = `<iframe src="${appUrl}/?eventId=${evtId}&mode=embed" width="100%" height="800" frameborder="0"></iframe>`;
     
     const handleCopy = () => {
         navigator.clipboard.writeText(code);
