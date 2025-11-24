@@ -1,5 +1,6 @@
 import React from 'react';
-import { Printer, ShieldCheck, QrCode, CheckCircle } from 'lucide-react';
+import { Printer, ShieldCheck, CheckCircle } from 'lucide-react';
+import QRCode from "react-qr-code"; // Import the REAL generator
 
 export default function SuccessReceipt({ order, event }) {
   const allTickets = [];
@@ -32,7 +33,6 @@ export default function SuccessReceipt({ order, event }) {
     <div className="animate-fade-in max-w-2xl mx-auto pb-10">
        {/* SCREEN ONLY HEADER */}
        <div className="bg-slate-900 text-white p-8 text-center rounded-t-xl no-print">
-          {/* This wrapper forces the background to print using specific CSS settings often respected by browsers */}
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4 shadow-lg bg-green-500 text-white" style={{WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'}}>
              <CheckCircle size={48} strokeWidth={3} />
           </div>
@@ -112,10 +112,17 @@ export default function SuccessReceipt({ order, event }) {
                                 <div className="font-bold text-amber-600">{t.name}</div>
                             </div>
                             <div className="text-center">
+                                {/* THE REAL QR CODE GENERATOR */}
                                 <div className="bg-white p-2">
-                                   <QrCode size={96} className="text-slate-900"/>
+                                   <QRCode 
+                                     size={96} 
+                                     style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                                     value={t.uniqueQrData} 
+                                     viewBox={`0 0 256 256`}
+                                   />
                                 </div>
-                                <div className="text-[10px] text-slate-400 font-mono">{t.uniqueQrData}</div>
+                                {/* We keep the text ID below it just in case */}
+                                <div className="text-[10px] text-slate-400 font-mono mt-1">{t.uniqueQrData}</div>
                             </div>
                         </div>
                         <div className="bg-slate-100 p-2 text-center text-xs text-slate-500 border-t">
