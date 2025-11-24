@@ -99,7 +99,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div className={`min-h-screen font-sans text-slate-900 ${isEmbed ? 'bg-transparent' : 'bg-slate-50'}`}>
       {/* Hide Navbar if in Embed Mode */}
       {!isEmbed && (
           <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 no-print shadow-lg">
