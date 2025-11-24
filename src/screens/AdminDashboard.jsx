@@ -150,7 +150,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
   const EmbedModal = ({ evtId, onClose }) => {
     // Uses the ACTUAL current website URL to generate the link
     const appUrl = window.location.origin; 
-    const code = `<iframe src="${appUrl}/?eventId=${evtId}&mode=embed" width="100%" height="1200" frameborder="0" style={{background: 'transparent'}}></iframe>`;
+    const code = `<iframe src="${appUrl}/?eventId=${evtId}&mode=embed" width="100%" height="1200" style="background: transparent; border: none;"></iframe>`;
     
     const handleCopy = () => {
         navigator.clipboard.writeText(code);

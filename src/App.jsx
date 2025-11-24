@@ -46,6 +46,17 @@ export default function App() {
   const params = new URLSearchParams(window.location.search);
   const isEmbed = params.get('mode') === 'embed';
 
+  // --- FORCE TRANSPARENCY FOR EMBEDS ---
+  useEffect(() => {
+    if (isEmbed) {
+        document.body.style.backgroundColor = 'transparent';
+        document.documentElement.style.backgroundColor = 'transparent';
+    } else {
+        document.body.style.backgroundColor = '';
+        document.documentElement.style.backgroundColor = '';
+    }
+  }, [isEmbed]);
+
   // Auth & Data
   useEffect(() => {
     signInAnonymously(auth);
@@ -85,13 +96,12 @@ export default function App() {
     });
 
     return () => { unsubEvents(); unsubOrders(); };
-  }, [user]); // Removed activeEventId dependency to prevent loop
+  }, [user]); 
 
   const navigateTo = (newView) => { window.scrollTo(0, 0); setView(newView); };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading All Nashville Roadshow...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
 
-  // Print View Special Case
   if (view === 'print_view' && printOrderId) {
      const orderToPrint = orders.find(o => o.id === printOrderId);
      const eventForPrint = events.find(e => e.id === orderToPrint?.eventId);
@@ -99,8 +109,8 @@ export default function App() {
   }
 
   return (
+    // We remove the bg-slate-50 class if embedded, allowing the transparent body to show
     <div className={`min-h-screen font-sans text-slate-900 ${isEmbed ? 'bg-transparent' : 'bg-slate-50'}`}>
-      {/* Hide Navbar if in Embed Mode */}
       {!isEmbed && (
           <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 no-print shadow-lg">
             <div className="max-w-6xl mx-auto flex justify-between items-center">
