@@ -16,6 +16,10 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showProtectionModal, setShowProtectionModal] = useState(false);
 
+  // --- CHECK FOR EMBED MODE ---
+  const params = new URLSearchParams(window.location.search);
+  const isEmbed = params.get('mode') === 'embed';
+
   const event = events.find(e => e.id === activeEventId);
 
   // Helper to fetch live order for receipt
@@ -534,8 +538,11 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-20">
+    // === THE FIX IS HERE: We switch bg-slate-100 for bg-transparent if isEmbed is true ===
+    <div className={`min-h-screen pb-20 ${isEmbed ? 'bg-transparent' : 'bg-slate-100'}`}>
        {step <= 3 && (
+           // We assume you still want the progress bar to look like a white card?
+           // If not, we can make this transparent too. For now, this stays white.
            <div className="bg-white shadow-sm py-4 mb-6">
               <div className="max-w-xl mx-auto px-4 flex justify-between">
                   {[1,2,3].map(s => (
