@@ -73,17 +73,15 @@ export default function App() {
         document.documentElement.style.backgroundColor = 'transparent';
 
         // Resize Observer to broadcast height changes to parent
-        const resizeObserver = new ResizeObserver((entries) => {
-            for (let entry of entries) {
-                // Send the height to the parent window
-                const height = entry.contentRect.height;
-                // We add a little buffer (20px) to prevent partial cutoffs
-                window.parent.postMessage({ type: 'setHeight', height: height + 20 }, '*');
-            }
+        const resizeObserver = new ResizeObserver(() => {
+            // We use document.body.scrollHeight for a more accurate "Total Content Height"
+            // This prevents the loop because it measures content, not container
+            const height = document.body.scrollHeight;
+            window.parent.postMessage({ type: 'setHeight', height: height }, '*');
         });
 
-        if (appRef.current) {
-            resizeObserver.observe(appRef.current);
+        if (document.body) {
+            resizeObserver.observe(document.body);
         }
 
         return () => resizeObserver.disconnect();
@@ -91,7 +89,7 @@ export default function App() {
         document.body.style.backgroundColor = '';
         document.documentElement.style.backgroundColor = '';
     }
-  }, [isEmbed, view, loading]); // Re-run when view changes so we grab the new height
+  }, [isEmbed, view, loading, events]); 
 
   // Auth & Data
   useEffect(() => {
@@ -144,7 +142,8 @@ export default function App() {
   }
 
   return (
-    <div ref={appRef} className={`min-h-screen font-sans text-slate-900 ${isEmbed ? 'bg-transparent' : 'bg-slate-50'}`}>
+    // FIX: Use min-h-0 if embedded to prevent infinite growth loop
+    <div ref={appRef} className={`font-sans text-slate-900 ${isEmbed ? 'bg-transparent min-h-0' : 'bg-slate-50 min-h-screen'}`}>
       {!isEmbed && (
           <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 no-print shadow-lg">
             <div className="max-w-6xl mx-auto flex justify-between items-center">

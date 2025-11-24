@@ -22,11 +22,7 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
 
   // --- SCROLL TO TOP ON STEP CHANGE ---
   useEffect(() => {
-    // 1. Scroll the iframe itself (internal)
     window.scrollTo(0, 0);
-    
-    // 2. Send signal to parent website (external)
-    // This allows your WordPress/Wix site to know it should scroll up
     window.parent.postMessage({ type: 'scrollToTop' }, '*');
   }, [step]);
 
@@ -278,7 +274,7 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
            <div className="space-y-4 mb-8">
              {availableUpgrades.map(upgrade => (
                <div key={upgrade.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden group flex flex-col md:flex-row">
-                  <div className="w-full md:w-32 h-32 md:h-auto bg-slate-200 flex-shrink-0 relative">
+                  <div className="w-32 h-32 flex-shrink-0 bg-slate-200 relative">
                     {upgrade.image ? (
                       <img src={upgrade.image} alt={upgrade.name} className="w-full h-full object-cover" />
                     ) : (
@@ -410,10 +406,13 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
           </div>
        </div>
 
-       {/* Terms Modal */}
+       {/* Terms Modal - FIXED POSITIONING */}
        {showTermsModal && (
-           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-               <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh]">
+           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+               {/* Backdrop */}
+               <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowTermsModal(false)}></div>
+               {/* Content */}
+               <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh] relative z-50">
                    <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
                        <h3 className="font-bold flex items-center"><FileText className="mr-2"/> Terms & Conditions</h3>
                        <button onClick={() => setShowTermsModal(false)}><X size={20}/></button>
@@ -482,10 +481,11 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
                 No thanks, I will take the risk
             </button>
 
-            {/* Protection Terms Modal */}
+            {/* Protection Terms Modal - FIXED POSITIONING */}
             {showProtectionModal && (
-               <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in text-left">
-                   <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh]">
+               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in text-left">
+                   <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowProtectionModal(false)}></div>
+                   <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh] relative z-50">
                        <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
                            <h3 className="font-bold flex items-center"><Shield size={20} className="mr-2"/> Protection Terms</h3>
                            <button onClick={() => setShowProtectionModal(false)}><X size={20}/></button>

@@ -11,7 +11,6 @@ export default function ScannerApp({ events, orders, db, appId }) {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Listen for auth changes
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
         setUser(u);
@@ -38,7 +37,6 @@ export default function ScannerApp({ events, orders, db, appId }) {
       orders.find(o => o.id === scannedOrderId), 
   [orders, scannedOrderId]);
 
-  // --- 1. LOGIN SCREEN (THE GATEKEEPER) ---
   if (!user || user.isAnonymous) {
       return (
           <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -54,42 +52,23 @@ export default function ScannerApp({ events, orders, db, appId }) {
                   <form onSubmit={handleLogin} className="space-y-4">
                       <div>
                           <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                          <input 
-                            type="email" 
-                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            placeholder="admin@example.com"
-                          />
+                          <input type="email" className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@example.com" />
                       </div>
                       <div>
                           <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-                          <input 
-                            type="password" 
-                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                            value={password}
-                            onChange={e => setPassword(e.target.value)}
-                            placeholder="••••••••"
-                          />
+                          <input type="password" className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
                       </div>
-                      
                       {loginError && <div className="text-red-500 text-sm text-center font-bold">{loginError}</div>}
-                      
-                      <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3 rounded-lg hover:bg-slate-800 transition">
-                          Log In
-                      </button>
+                      <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3 rounded-lg hover:bg-slate-800 transition">Log In</button>
                   </form>
               </div>
           </div>
       );
   }
 
-  // --- 2. REAL SCANNER LOGIC ---
-
   const handleScan = (qrString) => {
       const [oid, idx] = qrString.split(':');
       const order = orders.find(o => o.id === oid);
-      
       if (order) {
           setScannedOrderId(order.id);
           setHighlightedIndex(idx ? parseInt(idx) : null);
@@ -102,10 +81,8 @@ export default function ScannerApp({ events, orders, db, appId }) {
     try {
       const order = orders.find(o => o.id === orderId);
       if (!order) return;
-
       const newCheckIns = { ...(order.checkIns || {}) };
       newCheckIns[itemIndex] = !currentStatus;
-
       const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
       await updateDoc(orderRef, { checkIns: newCheckIns });
     } catch (e) {
@@ -127,9 +104,11 @@ export default function ScannerApp({ events, orders, db, appId }) {
 
   const paidOrders = orders.filter(o => o.status === 'paid');
   const filteredOrders = paidOrders.filter(o => {
-    const matchesSearch = o.customer?.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          o.id.includes(searchTerm);
-    return matchesSearch;
+    const term = searchTerm.toLowerCase();
+    // SEARCH UPDATE: Include Email in filter
+    return o.customer?.name?.toLowerCase().includes(term) || 
+           o.id.includes(term) ||
+           o.customer?.email?.toLowerCase().includes(term);
   });
 
   if (scannedOrder) {
@@ -151,24 +130,14 @@ export default function ScannerApp({ events, orders, db, appId }) {
                       
                       {protection && (
                           <div className="flex justify-center mt-2">
-                             <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded flex items-center">
-                                <ShieldCheck size={12} className="mr-1"/> Protection
-                             </span>
+                             <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded flex items-center"><ShieldCheck size={12} className="mr-1"/> Protection</span>
                           </div>
                       )}
                   </div>
 
                   <div className="space-y-3">
                       {checkInList.map((item) => (
-                          <div 
-                            key={item.globalIndex} 
-                            onClick={() => toggleItemCheckIn(scannedOrder.id, item.globalIndex, item.status)}
-                            className={`p-4 rounded-xl border-2 flex justify-between items-center cursor-pointer transition ${
-                                item.status 
-                                ? 'bg-green-50 border-green-500' 
-                                : (highlightedIndex === item.globalIndex ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-300' : 'bg-white border-slate-200')
-                            }`}
-                          >
+                          <div key={item.globalIndex} onClick={() => toggleItemCheckIn(scannedOrder.id, item.globalIndex, item.status)} className={`p-4 rounded-xl border-2 flex justify-between items-center cursor-pointer transition ${item.status ? 'bg-green-50 border-green-500' : (highlightedIndex === item.globalIndex ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-300' : 'bg-white border-slate-200')}`}>
                               <div>
                                   <div className="font-bold text-lg">{item.name}</div>
                                   <div className="text-xs text-slate-500 uppercase">{item.type} • Ticket #{item.globalIndex + 1}</div>
@@ -179,6 +148,19 @@ export default function ScannerApp({ events, orders, db, appId }) {
                           </div>
                       ))}
                   </div>
+                  
+                  {/* --- CHECK IN ALL BUTTON RESTORED --- */}
+                  <button 
+                    onClick={() => {
+                        const updates = {};
+                        checkInList.forEach(i => updates[i.globalIndex] = true);
+                        const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', scannedOrder.id);
+                        updateDoc(orderRef, { checkIns: updates });
+                    }}
+                    className="w-full mt-6 bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800"
+                  >
+                      Check In ALL Items
+                  </button>
               </div>
           </div>
       );
@@ -186,17 +168,12 @@ export default function ScannerApp({ events, orders, db, appId }) {
 
   return (
     <div className="bg-slate-100 min-h-screen pb-20">
-      <div className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-lg">
-          <div className="flex justify-between items-center mb-4">
-             <div className="font-bold text-lg flex items-center"><QrCode className="mr-2 text-amber-500"/> Door Scanner</div>
-             <button onClick={() => auth.signOut()} className="text-xs text-slate-400 hover:text-white flex items-center">
-                <LogOut size={14} className="mr-1"/> Exit
-             </button>
-          </div>
-          <div className="relative">
+      <div className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-lg flex gap-2">
+          <div className="relative flex-grow">
              <Search className="absolute left-3 top-3 text-slate-400" size={18} />
-             <input type="text" placeholder="Search Guest Name or ID..." className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-800 text-white border-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+             <input type="text" placeholder="Search Name, ID, or Email..." className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-800 text-white border-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>
+          <button onClick={() => auth.signOut()} className="text-xs text-slate-400 hover:text-white flex items-center ml-2"><LogOut size={14} className="mr-1"/> Exit</button>
       </div>
 
       <div className="p-4 space-y-4">
@@ -207,6 +184,7 @@ export default function ScannerApp({ events, orders, db, appId }) {
                <div key={order.id} onClick={() => setScannedOrderId(order.id)} className="bg-white rounded-xl shadow-sm border-l-4 border-amber-500 p-4 cursor-pointer hover:bg-slate-50">
                    <h3 className="font-bold text-lg text-slate-900">{order.customer?.name}</h3>
                    <p className="text-xs text-slate-500">ID: #{order.id.slice(0,6)}</p>
+                   <p className="text-xs text-slate-400">{order.customer?.email}</p>
                </div>
             ))
          )}
