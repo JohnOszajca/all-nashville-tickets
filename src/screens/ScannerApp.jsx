@@ -1,8 +1,35 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { QrCode, Search, ChevronLeft, CheckCircle, ShieldCheck, Tag } from 'lucide-react';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { auth } from '../services/firebase';
+import { QrCode, Search, ChevronLeft, CheckCircle, ShieldCheck, Tag, Lock, LogOut } from 'lucide-react';
 
 export default function ScannerApp({ events, orders, db, appId }) {
+  // --- AUTH STATE ---
+  const [user, setUser] = useState(auth.currentUser);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  // Listen for auth changes
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((u) => {
+        setUser(u);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogin = async (e) => {
+      e.preventDefault();
+      try {
+          await signInWithEmailAndPassword(auth, email, password);
+          setLoginError('');
+      } catch (err) {
+          setLoginError('Invalid email or password');
+      }
+  };
+
+  // --- SCANNER STATE ---
   const [searchTerm, setSearchTerm] = useState('');
   const [scannedOrderId, setScannedOrderId] = useState(null); 
   const [highlightedIndex, setHighlightedIndex] = useState(null); 
@@ -10,6 +37,54 @@ export default function ScannerApp({ events, orders, db, appId }) {
   const scannedOrder = useMemo(() => 
       orders.find(o => o.id === scannedOrderId), 
   [orders, scannedOrderId]);
+
+  // --- 1. LOGIN SCREEN (THE GATEKEEPER) ---
+  if (!user || user.isAnonymous) {
+      return (
+          <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+              <div className="max-w-md w-full bg-white rounded-xl shadow-lg border border-slate-200 p-8">
+                  <div className="text-center mb-8">
+                      <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Lock className="text-amber-500" size={32} />
+                      </div>
+                      <h2 className="text-2xl font-bold text-slate-900">Staff Access</h2>
+                      <p className="text-slate-500">Please log in to access the scanner.</p>
+                  </div>
+                  
+                  <form onSubmit={handleLogin} className="space-y-4">
+                      <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                          <input 
+                            type="email" 
+                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                            value={email}
+                            onChange={e => setEmail(e.target.value)}
+                            placeholder="admin@example.com"
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                          <input 
+                            type="password" 
+                            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                          />
+                      </div>
+                      
+                      {loginError && <div className="text-red-500 text-sm text-center font-bold">{loginError}</div>}
+                      
+                      <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3 rounded-lg hover:bg-slate-800 transition">
+                          Log In
+                      </button>
+                  </form>
+              </div>
+          </div>
+      );
+  }
+
+  // --- 2. REAL SCANNER LOGIC ---
 
   const handleScan = (qrString) => {
       const [oid, idx] = qrString.split(':');
@@ -111,8 +186,14 @@ export default function ScannerApp({ events, orders, db, appId }) {
 
   return (
     <div className="bg-slate-100 min-h-screen pb-20">
-      <div className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-lg flex gap-2">
-          <div className="relative flex-grow">
+      <div className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-lg">
+          <div className="flex justify-between items-center mb-4">
+             <div className="font-bold text-lg flex items-center"><QrCode className="mr-2 text-amber-500"/> Door Scanner</div>
+             <button onClick={() => auth.signOut()} className="text-xs text-slate-400 hover:text-white flex items-center">
+                <LogOut size={14} className="mr-1"/> Exit
+             </button>
+          </div>
+          <div className="relative">
              <Search className="absolute left-3 top-3 text-slate-400" size={18} />
              <input type="text" placeholder="Search Guest Name or ID..." className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-800 text-white border-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>

@@ -1,8 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { Plus, Trash2, X, Copy, BarChart3, ChevronDown, ChevronUp, Code, Clipboard } from 'lucide-react';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { auth } from '../services/firebase';
+import { Plus, Trash2, X, Copy, BarChart3, ChevronDown, ChevronUp, Code, Clipboard, Lock, LogOut } from 'lucide-react';
 
 export default function AdminDashboard({ events, orders, db, appId, navigateTo, setPrintOrderId }) {
+  // --- AUTH STATE ---
+  const [user, setUser] = useState(auth.currentUser);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  // Listen for auth changes
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((u) => {
+        setUser(u);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogin = async (e) => {
+      e.preventDefault();
+      try {
+          await signInWithEmailAndPassword(auth, email, password);
+          setLoginError('');
+      } catch (err) {
+          setLoginError('Invalid email or password');
+      }
+  };
+
+  // --- DASHBOARD STATE ---
   const [isEditing, setIsEditing] = useState(false);
   const [expandedStats, setExpandedStats] = useState(null);
   const [activeTab, setActiveTab] = useState('details'); 
@@ -38,6 +65,52 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
         noThanksText: 'No thanks, I prefer to walk'
     }
   });
+
+  // --- 1. LOGIN SCREEN (THE GATEKEEPER) ---
+  if (!user || user.isAnonymous) {
+      return (
+          <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-xl shadow-lg border border-slate-200">
+              <div className="text-center mb-8">
+                  <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Lock className="text-amber-500" size={32} />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900">Admin Access</h2>
+                  <p className="text-slate-500">Please log in to manage events.</p>
+              </div>
+              
+              <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                      <input 
+                        type="email" 
+                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="admin@example.com"
+                      />
+                  </div>
+                  <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                      <input 
+                        type="password" 
+                        className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                      />
+                  </div>
+                  
+                  {loginError && <div className="text-red-500 text-sm text-center font-bold">{loginError}</div>}
+                  
+                  <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3 rounded-lg hover:bg-slate-800 transition">
+                      Log In
+                  </button>
+              </form>
+          </div>
+      );
+  }
+
+  // --- 2. REAL DASHBOARD LOGIC ---
 
   const handleSaveEvent = async () => {
     try {
@@ -432,6 +505,13 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
     <div className="space-y-6">
       {showEmbed && <EmbedModal evtId={showEmbed} onClose={() => setShowEmbed(null)} />}
 
+      <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
+          <button onClick={() => auth.signOut()} className="text-sm text-red-500 flex items-center hover:underline">
+              <LogOut size={16} className="mr-1"/> Sign Out
+          </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
           <div className="text-slate-500 text-sm font-bold uppercase">Total Revenue</div>
@@ -448,15 +528,8 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
             upgrades: [], taxRate: 0, feeRate: 0, feeType: 'flat',
             upgradesHeading: 'Enhance Your Experience', upgradesDescription: 'Customize your night with these exclusive add-ons.',
             termsText: 'By proceeding, you agree to the standard terms and conditions of All Nashville Roadshow. All sales are final. No refunds or exchanges.',
-            protectionConfig: {
-                enabled: true,
-                title: 'Protect Your Order',
-                description: "Life happens. Get a full refund if you can't attend due to illness, weather, or other qualifying reasons.",
-                percentage: 10,
-                sellingPoints: "Receive a 100% refund for:\n\n• Qualifying Illness or Injury\n• Severe Weather & Travel Advisories\n• Government Mandates or Lockdowns\n• Jury Duty or Military Service\n• Mechanical Breakdown",
-                legalText: "TICKET PROTECTION TERMS & CONDITIONS\n\n1. COVERAGE: This protection plan provides a refund of the ticket price (excluding fees) if the ticket holder is unable to attend the event due to a covered reason.\n\n2. COVERED REASONS:\n- Serious illness or injury of the ticket holder (physician's note required).\n- Death of an immediate family member.\n- Severe weather conditions preventing travel to the venue (official government advisory required).\n- Government-mandated lockdowns or restrictions preventing attendance.\n- Mechanical breakdown of vehicle within 24 hours of event.\n- Jury duty or military conscription.\n\n3. EXCLUSIONS:\n- Change of plans or disinclination to travel.\n- Work conflicts (unless military).\n- Pre-existing medical conditions known at time of purchase.\n\n4. CLAIMS: Claims must be submitted within 7 days of the event date with appropriate documentation."
-            },
-            upsellConfig: { enabled: true, title: 'Wait! One Last Thing...', description: 'Grab a VIP Parking Pass...', price: 15, retailPrice: 30, itemName: 'VIP Parking', image: 'https://placehold.co/400x300/orange/white', noThanksText: 'No thanks' }
+            protectionConfig: { enabled: true, title: 'Protect Your Order', percentage: 10, sellingPoints: '', legalText: '' },
+            upsellConfig: { enabled: true, title: 'Wait!', price: 15, retailPrice: 30, itemName: 'VIP Parking' }
           });
           setIsEditing(true);
           setActiveTab('details');
