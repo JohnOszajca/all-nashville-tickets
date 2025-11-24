@@ -32,8 +32,9 @@ export default function SuccessReceipt({ order, event }) {
     <div className="animate-fade-in max-w-2xl mx-auto pb-10">
        {/* SCREEN ONLY HEADER */}
        <div className="bg-slate-900 text-white p-8 text-center rounded-t-xl no-print">
-          <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mx-auto mb-4 overflow-hidden border-4 border-amber-500 shadow-lg">
-             <img src="/logo.jpg" alt="Logo" className="w-full h-full object-cover" />
+          {/* This wrapper forces the background to print using specific CSS settings often respected by browsers */}
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4 shadow-lg bg-green-500 text-white" style={{WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'}}>
+             <CheckCircle size={48} strokeWidth={3} />
           </div>
           <h1 className="text-3xl font-bold mb-2">You're Going!</h1>
           <p className="text-slate-300">Order #{order.id?.slice(0,8)} confirmed.</p>
@@ -88,11 +89,11 @@ export default function SuccessReceipt({ order, event }) {
              <div className="space-y-6">
                 {allTickets.map((t) => (
                     <div key={t.uniqueIndex} className="border-2 border-slate-900 rounded-xl overflow-hidden print-ticket break-inside-avoid page-break">
-                        <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
+                        <div className="bg-slate-900 text-white p-4 flex justify-between items-center" style={{WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'}}>
                             <div className="flex items-center gap-4">
-                                {/* LOGO ADDED TO PRINTED TICKET */}
-                                <div className="w-12 h-12 bg-white rounded-full overflow-hidden border-2 border-amber-500">
-                                    <img src="/logo.jpg" alt="Logo" className="w-full h-full object-cover" />
+                                {/* PRINTABLE GREEN CHECKMARK FOR TICKET HEADER */}
+                                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-green-600" style={{WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'}}>
+                                    <CheckCircle size={24} />
                                 </div>
                                 <div>
                                     <div className="font-bold text-lg">{event?.name || 'Event Ticket'}</div>
@@ -100,7 +101,7 @@ export default function SuccessReceipt({ order, event }) {
                                 </div>
                             </div>
                             <div className="text-right">
-                                <div className="bg-white text-slate-900 text-xs font-bold px-2 py-1 rounded uppercase">{t.type}</div>
+                                <div className="bg-white text-slate-900 text-xs font-bold px-2 py-1 rounded uppercase" style={{WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'}}>{t.type}</div>
                             </div>
                         </div>
                         <div className="p-4 flex justify-between items-center bg-white">

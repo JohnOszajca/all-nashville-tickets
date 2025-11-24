@@ -1,40 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Ticket, Settings, QrCode, ShoppingBag } from 'lucide-react';
 
-// Import our organized files
 import { auth, db, appId } from './services/firebase';
 import AdminDashboard from './screens/AdminDashboard';
 import CheckoutFlow from './screens/CheckoutFlow';
 import ScannerApp from './screens/ScannerApp';
 import SuccessReceipt from './components/SuccessReceipt';
 
-// --- SKELETON LOADER (Visual trick for speed) ---
+// --- SKELETON LOADER ---
 function SkeletonCheckout() {
   return (
     <div className="max-w-xl mx-auto px-4 pt-6 animate-pulse">
-      {/* Fake Title */}
       <div className="h-8 bg-slate-200 rounded w-3/4 mb-4"></div>
       <div className="flex space-x-4 mb-8">
         <div className="h-4 bg-slate-200 rounded w-1/3"></div>
         <div className="h-4 bg-slate-200 rounded w-1/3"></div>
       </div>
-      {/* Fake Ticket Cards */}
       <div className="space-y-4 mb-8">
         <div className="h-24 bg-slate-100 border border-slate-200 rounded-lg"></div>
         <div className="h-24 bg-slate-100 border border-slate-200 rounded-lg"></div>
         <div className="h-24 bg-slate-100 border border-slate-200 rounded-lg"></div>
       </div>
-      {/* Fake Input fields */}
       <div className="h-32 bg-slate-100 border border-slate-200 rounded-lg mb-8"></div>
-      {/* Fake Button */}
       <div className="h-16 bg-amber-100 rounded-xl w-full"></div>
     </div>
   );
 }
 
-// Landing Component
 function LandingPage({ navigateTo }) {
   return (
     <div className="py-12 text-center space-y-8 animate-fade-in">
@@ -65,21 +59,39 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const appRef = useRef(null);
   
   // Check for Embed Mode
   const params = new URLSearchParams(window.location.search);
   const isEmbed = params.get('mode') === 'embed';
 
-  // --- FORCE TRANSPARENCY FOR EMBEDS ---
+  // --- AUTO-RESIZER & TRANSPARENCY ---
   useEffect(() => {
     if (isEmbed) {
+        // Force transparent background
         document.body.style.backgroundColor = 'transparent';
         document.documentElement.style.backgroundColor = 'transparent';
+
+        // Resize Observer to broadcast height changes to parent
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (let entry of entries) {
+                // Send the height to the parent window
+                const height = entry.contentRect.height;
+                // We add a little buffer (20px) to prevent partial cutoffs
+                window.parent.postMessage({ type: 'setHeight', height: height + 20 }, '*');
+            }
+        });
+
+        if (appRef.current) {
+            resizeObserver.observe(appRef.current);
+        }
+
+        return () => resizeObserver.disconnect();
     } else {
         document.body.style.backgroundColor = '';
         document.documentElement.style.backgroundColor = '';
     }
-  }, [isEmbed]);
+  }, [isEmbed, view, loading]); // Re-run when view changes so we grab the new height
 
   // Auth & Data
   useEffect(() => {
@@ -91,7 +103,6 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    // 1. Check URL for deep link FIRST
     const params = new URLSearchParams(window.location.search);
     const urlEventId = params.get('eventId');
     if (urlEventId) {
@@ -99,21 +110,18 @@ export default function App() {
         setView('checkout');
     }
 
-    // 2. Listen to Events
     const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
     const unsubEvents = onSnapshot(eventsRef, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
       setEvents(data);
       
-      // Only default to first event if NO URL param and NO active selection
       if (data.length > 0 && !activeEventId && !urlEventId) {
           setActiveEventId(data[0].id);
       }
       setLoading(false);
     });
 
-    // 3. Listen to Orders
     const ordersRef = collection(db, 'artifacts', appId, 'public', 'data', 'orders');
     const unsubOrders = onSnapshot(ordersRef, (snap) => {
       setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -124,24 +132,19 @@ export default function App() {
 
   const navigateTo = (newView) => { window.scrollTo(0, 0); setView(newView); };
 
-  // --- IMPROVED LOADING STATE ---
   if (loading) {
-      // If embedded, show the Skeleton Checkout so it feels like the app is already there
-      if (isEmbed || view === 'checkout') {
-          return <SkeletonCheckout />;
-      }
-      // Otherwise show standard loading
+      if (isEmbed || view === 'checkout') return <div ref={appRef}><SkeletonCheckout /></div>;
       return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
 
   if (view === 'print_view' && printOrderId) {
      const orderToPrint = orders.find(o => o.id === printOrderId);
      const eventForPrint = events.find(e => e.id === orderToPrint?.eventId);
-     return <SuccessReceipt order={orderToPrint} event={eventForPrint} />;
+     return <div ref={appRef}><SuccessReceipt order={orderToPrint} event={eventForPrint} /></div>;
   }
 
   return (
-    <div className={`min-h-screen font-sans text-slate-900 ${isEmbed ? 'bg-transparent' : 'bg-slate-50'}`}>
+    <div ref={appRef} className={`min-h-screen font-sans text-slate-900 ${isEmbed ? 'bg-transparent' : 'bg-slate-50'}`}>
       {!isEmbed && (
           <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 no-print shadow-lg">
             <div className="max-w-6xl mx-auto flex justify-between items-center">
