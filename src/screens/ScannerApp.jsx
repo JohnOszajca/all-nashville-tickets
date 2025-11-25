@@ -2,12 +2,13 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { QrCode, Search, ChevronLeft, CheckCircle, ShieldCheck, Tag, Lock, LogOut, Camera, X } from 'lucide-react';
+import { QrCode, Search, ChevronLeft, CheckCircle, ShieldCheck, Tag, Lock, LogOut, Camera, X, Calendar, User } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 
 export default function ScannerApp({ events, orders, db, appId }) {
   // --- AUTH STATE ---
-  const [user, setUser] = useState(auth.currentUser);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -15,6 +16,7 @@ export default function ScannerApp({ events, orders, db, appId }) {
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
         setUser(u);
+        setAuthLoading(false);
     });
     return () => unsub();
   }, []);
@@ -30,14 +32,17 @@ export default function ScannerApp({ events, orders, db, appId }) {
   };
 
   // --- SCANNER STATE ---
+  const [activeEvent, setActiveEvent] = useState(null); // NEW: Selected Event
   const [searchTerm, setSearchTerm] = useState('');
   const [scannedOrderId, setScannedOrderId] = useState(null); 
-  const [highlightedIndex, setHighlightedIndex] = useState(null); 
   const [isScanning, setIsScanning] = useState(false); 
 
   const scannedOrder = useMemo(() => 
       orders.find(o => o.id === scannedOrderId), 
   [orders, scannedOrderId]);
+
+  // --- LOADING SCREEN ---
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-100">Loading Scanner...</div>;
 
   // --- LOGIN SCREEN ---
   if (!user || user.isAnonymous) {
@@ -68,27 +73,45 @@ export default function ScannerApp({ events, orders, db, appId }) {
       );
   }
 
-  // --- SCAN HANDLER ---
-  const handleScanData = (results) => {
-      if (!results) return;
-      
-      // The new library returns an array of results, we take the first one
-      const rawValue = results[0]?.rawValue;
-      if (!rawValue) return;
+  // --- 1. EVENT SELECTOR VIEW ---
+  if (!activeEvent) {
+      return (
+          <div className="min-h-screen bg-slate-100 pb-10">
+              <div className="bg-slate-900 text-white p-4 shadow-lg flex justify-between items-center sticky top-0 z-10">
+                  <h2 className="font-bold text-lg flex items-center"><Calendar className="mr-2 text-amber-500"/> Select Event</h2>
+                  <button onClick={() => auth.signOut()} className="text-xs text-slate-400 hover:text-white flex items-center"><LogOut size={14} className="mr-1"/> Exit</button>
+              </div>
+              <div className="p-4 space-y-3">
+                  {events.length === 0 && <div className="text-center text-slate-400 mt-10">No events found.</div>}
+                  {events.map(evt => (
+                      <div key={evt.id} onClick={() => setActiveEvent(evt)} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 cursor-pointer hover:bg-amber-50 active:scale-95 transition">
+                          <div className="font-bold text-lg text-slate-900">{evt.name}</div>
+                          <div className="text-sm text-slate-500">{new Date(evt.start).toLocaleString()}</div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      );
+  }
 
-      // Format is "orderId:ticketIndex"
+  // --- 2. ACTIVE EVENT SCANNER VIEW ---
+
+  const handleScanData = (results) => {
+      if (!results || !results[0]?.rawValue) return;
+      const rawValue = results[0].rawValue;
       const parts = rawValue.split(':');
       const oid = parts[0];
-      const idx = parts[1];
-
+      // Check if order belongs to current event
       const order = orders.find(o => o.id === oid);
       
-      if (order) {
+      if (order && order.eventId === activeEvent.id) {
           setScannedOrderId(order.id);
-          setHighlightedIndex(idx ? parseInt(idx) : null);
-          setIsScanning(false); // Close camera on success
+          setIsScanning(false);
+      } else if (order) {
+          alert("Wrong Event! This ticket is for " + order.eventName);
+          setIsScanning(false);
       } else {
-          alert("Order not found in this database!");
+          alert("Order not found!");
           setIsScanning(false);
       }
   };
@@ -118,8 +141,19 @@ export default function ScannerApp({ events, orders, db, appId }) {
       return list;
   };
 
-  const paidOrders = orders.filter(o => o.status === 'paid');
-  const filteredOrders = paidOrders.filter(o => {
+  // Filter orders for CURRENT EVENT only
+  const eventOrders = orders.filter(o => o.eventId === activeEvent.id && o.status === 'paid');
+  
+  // Calculate Stats
+  const totalEventTickets = eventOrders.reduce((acc, o) => acc + (o.items?.reduce((s, i) => s + i.qty, 0) || 0), 0);
+  const totalCheckedIn = eventOrders.reduce((acc, o) => {
+      // count how many keys in checkIns are true
+      const checkedCount = Object.values(o.checkIns || {}).filter(v => v === true).length;
+      return acc + checkedCount;
+  }, 0);
+
+  // Filter for Search
+  const filteredOrders = eventOrders.filter(o => {
     const term = searchTerm.toLowerCase();
     return o.customer?.name?.toLowerCase().includes(term) || 
            o.id.includes(term) ||
@@ -136,24 +170,15 @@ export default function ScannerApp({ events, orders, db, appId }) {
               </div>
               <div className="flex-grow flex items-center justify-center bg-black">
                   <div className="w-full max-w-md aspect-square relative">
-                      {/* The New Scanner Component */}
-                      <Scanner 
-                          onScan={handleScanData}
-                          components={{ audio: false, finder: false }} 
-                          styles={{ container: { width: '100%', height: '100%' } }}
-                      />
-                      {/* Visual Guide Box */}
+                      <Scanner onScan={handleScanData} components={{ audio: false, finder: false }} styles={{ container: { width: '100%', height: '100%' } }} />
                       <div className="absolute inset-0 border-4 border-amber-500 opacity-50 pointer-events-none m-12 rounded-xl z-20"></div>
                   </div>
-              </div>
-              <div className="p-8 text-center text-slate-400">
-                  Point camera at the ticket QR code.
               </div>
           </div>
       );
   }
 
-  // --- ORDER DETAILS VIEW ---
+  // --- ORDER DETAIL MODAL (When Scanned or Clicked) ---
   if (scannedOrder) {
       const checkInList = getCheckInList(scannedOrder);
       const protection = scannedOrder.upsells?.find(u => u.name === 'Ticket Protection');
@@ -161,83 +186,88 @@ export default function ScannerApp({ events, orders, db, appId }) {
       return (
           <div className="bg-slate-100 min-h-screen pb-20">
               <div className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-lg flex justify-between items-center">
-                  <button onClick={() => { setScannedOrderId(null); setHighlightedIndex(null); }} className="text-white flex items-center"><ChevronLeft /> Back</button>
+                  <button onClick={() => setScannedOrderId(null)} className="text-white flex items-center"><ChevronLeft /> Back</button>
                   <div className="font-bold">Checking In</div>
                   <div className="w-8"></div>
               </div>
-              
               <div className="p-4">
                   <div className="bg-white rounded-xl shadow p-4 mb-4 text-center">
                       <h2 className="text-2xl font-bold">{scannedOrder.customer?.name}</h2>
                       <p className="text-slate-500">Order #{scannedOrder.id.slice(0,6)}</p>
-                      
-                      {protection && (
-                          <div className="flex justify-center mt-2">
-                             <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded flex items-center"><ShieldCheck size={12} className="mr-1"/> Protection</span>
-                          </div>
-                      )}
+                      {protection && <div className="flex justify-center mt-2"><span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded flex items-center"><ShieldCheck size={12} className="mr-1"/> Protection</span></div>}
                   </div>
-
                   <div className="space-y-3">
                       {checkInList.map((item) => (
-                          <div key={item.globalIndex} onClick={() => toggleItemCheckIn(scannedOrder.id, item.globalIndex, item.status)} className={`p-4 rounded-xl border-2 flex justify-between items-center cursor-pointer transition ${item.status ? 'bg-green-50 border-green-500' : (highlightedIndex === item.globalIndex ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-300' : 'bg-white border-slate-200')}`}>
-                              <div>
-                                  <div className="font-bold text-lg">{item.name}</div>
-                                  <div className="text-xs text-slate-500 uppercase">{item.type} • Ticket #{item.globalIndex + 1}</div>
-                              </div>
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${item.status ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-400'}`}>
-                                  <CheckCircle size={20} />
-                              </div>
+                          <div key={item.globalIndex} onClick={() => toggleItemCheckIn(scannedOrder.id, item.globalIndex, item.status)} className={`p-4 rounded-xl border-2 flex justify-between items-center cursor-pointer transition ${item.status ? 'bg-green-50 border-green-500' : 'bg-white border-slate-200'}`}>
+                              <div><div className="font-bold text-lg">{item.name}</div><div className="text-xs text-slate-500 uppercase">{item.type} • Ticket #{item.globalIndex + 1}</div></div>
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${item.status ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-400'}`}><CheckCircle size={20} /></div>
                           </div>
                       ))}
                   </div>
-                  
-                  <button 
-                    onClick={() => {
+                  <button onClick={() => {
                         const updates = {};
                         checkInList.forEach(i => updates[i.globalIndex] = true);
                         const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', scannedOrder.id);
                         updateDoc(orderRef, { checkIns: updates });
-                    }}
-                    className="w-full mt-6 bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800"
-                  >
-                      Check In ALL Items
-                  </button>
+                    }} className="w-full mt-6 bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800">Check In ALL Items</button>
               </div>
           </div>
       );
   }
 
+  // --- MAIN LIST VIEW (COMPACT) ---
   return (
     <div className="bg-slate-100 min-h-screen pb-20">
-      <div className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-lg flex gap-2">
-          <div className="relative flex-grow">
-             <Search className="absolute left-3 top-3 text-slate-400" size={18} />
-             <input type="text" placeholder="Search Name, ID, or Email..." className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-800 text-white border-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+      {/* HEADER WITH STATS */}
+      <div className="bg-slate-900 text-white sticky top-0 z-40 shadow-lg">
+          <div className="p-4 pb-2 flex justify-between items-center">
+             <div className="flex items-center">
+                 <button onClick={() => setActiveEvent(null)} className="mr-3 text-slate-400 hover:text-white"><ChevronLeft /></button>
+                 <div className="font-bold truncate max-w-[200px]">{activeEvent.name}</div>
+             </div>
+             <div className="text-xs bg-slate-800 px-2 py-1 rounded text-amber-500 font-mono">
+                 {totalCheckedIn} / {totalEventTickets}
+             </div>
           </div>
-          <button onClick={() => auth.signOut()} className="text-xs text-slate-400 hover:text-white flex items-center ml-2"><LogOut size={14} className="mr-1"/> Exit</button>
+          <div className="px-4 pb-4 flex gap-2">
+             <div className="relative flex-grow">
+                <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                <input type="text" placeholder="Search..." className="w-full pl-9 pr-4 py-2 rounded bg-slate-800 text-white text-sm border-none focus:ring-1 focus:ring-amber-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+             </div>
+             <button onClick={() => setIsScanning(true)} className="bg-amber-500 text-white p-2 rounded font-bold shadow flex items-center justify-center"><Camera size={20} /></button>
+          </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="p-2 space-y-1">
          {filteredOrders.length === 0 ? (
             <div className="text-center text-slate-400 mt-10">No orders found.</div>
          ) : (
-            filteredOrders.map(order => (
-               <div key={order.id} onClick={() => setScannedOrderId(order.id)} className="bg-white rounded-xl shadow-sm border-l-4 border-amber-500 p-4 cursor-pointer hover:bg-slate-50">
-                   <h3 className="font-bold text-lg text-slate-900">{order.customer?.name}</h3>
-                   <p className="text-xs text-slate-500">ID: #{order.id.slice(0,6)}</p>
-                   <p className="text-xs text-slate-400">{order.customer?.email}</p>
-               </div>
-            ))
+            filteredOrders.map(order => {
+               // Check if ALL items in this order are checked in
+               const totalItems = order.items?.reduce((acc, i) => acc + i.qty, 0) || 0;
+               const checkedCount = Object.values(order.checkIns || {}).filter(v => v === true).length;
+               const isFullyCheckedIn = totalItems > 0 && checkedCount >= totalItems;
+               
+               return (
+                   <div key={order.id} onClick={() => setScannedOrderId(order.id)} className={`bg-white rounded border shadow-sm cursor-pointer flex items-center p-2 border-l-4 ${isFullyCheckedIn ? 'border-l-green-500' : 'border-l-yellow-400'}`}>
+                       <div className="flex-grow ml-2">
+                           <div className="font-bold text-sm text-slate-900">{order.customer?.name}</div>
+                           <div className="text-xs text-slate-500 flex gap-2">
+                               <span>ID: {order.id.slice(0,6)}</span>
+                               <span>•</span>
+                               <span>{order.customer?.email}</span>
+                           </div>
+                       </div>
+                       <div className={`text-xs font-bold px-2 py-1 rounded ${isFullyCheckedIn ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                           {checkedCount}/{totalItems}
+                       </div>
+                   </div>
+               );
+            })
          )}
       </div>
       
-      <button 
-        onClick={() => setIsScanning(true)}
-        className="fixed bottom-6 right-6 w-16 h-16 bg-amber-500 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition z-50"
-      >
-          <Camera size={32} />
-      </button>
+      <button onClick={() => setIsScanning(true)} className="fixed bottom-6 right-6 w-14 h-14 bg-amber-500 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition z-50"><Camera size={28} /></button>
     </div>
   );
 }

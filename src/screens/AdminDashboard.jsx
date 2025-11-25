@@ -6,7 +6,8 @@ import { Plus, Trash2, X, Copy, BarChart3, ChevronDown, ChevronUp, Code, Clipboa
 
 export default function AdminDashboard({ events, orders, db, appId, navigateTo, setPrintOrderId }) {
   // --- AUTH STATE ---
-  const [user, setUser] = useState(auth.currentUser);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true); // Prevents kicking you out on refresh
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -14,6 +15,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
         setUser(u);
+        setAuthLoading(false); // Stop loading once we know the status
     });
     return () => unsub();
   }, []);
@@ -65,6 +67,9 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
         noThanksText: 'No thanks, I prefer to walk'
     }
   });
+
+  // --- AUTH LOADING SCREEN ---
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50">Verifying Access...</div>;
 
   // --- LOGIN SCREEN ---
   if (!user || user.isAnonymous) {
@@ -123,7 +128,6 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
     }
   };
 
-  // --- SMART EMBED CODE GENERATOR ---
   const EmbedModal = ({ evtId, onClose }) => {
     const appUrl = window.location.origin; 
     const frameId = `ticket-frame-${evtId}`;
@@ -197,7 +201,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
           <h2 className="text-2xl font-bold">Create/Edit Event</h2>
           <button onClick={() => setIsEditing(false)} className="text-slate-500 hover:text-slate-800"><X /></button>
         </div>
-        {/* Tab Navigation */}
+        
         <div className="flex border-b mb-6 overflow-x-auto">
             {['details', 'tickets', 'upgrades', 'protection', 'one-click', 'settings'].map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 font-medium capitalize whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-amber-500 text-amber-600' : 'text-slate-500'}`}>{tab.replace('-', ' ')}</button>
@@ -486,6 +490,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
     );
   }
 
+  // --- REGULAR DASHBOARD VIEW ---
   return (
     <div className="space-y-6">
       {showEmbed && <EmbedModal evtId={showEmbed} onClose={() => setShowEmbed(null)} />}
@@ -529,29 +534,47 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className="px-6 py-4 border-b bg-slate-50 flex justify-between items-center">
           <h3 className="font-bold text-slate-700">{eventFilter === 'active' ? 'Active' : 'Past'} Events</h3>
+          
           <div className="flex bg-slate-100 rounded-lg p-1">
-             <button className={`px-3 py-1 text-xs font-bold rounded-md ${eventFilter === 'active' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`} onClick={() => setEventFilter('active')}>Active</button>
-             <button className={`px-3 py-1 text-xs font-bold rounded-md ${eventFilter === 'past' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`} onClick={() => setEventFilter('past')}>Past</button>
+             <button 
+               className={`px-3 py-1 text-xs font-bold rounded-md ${eventFilter === 'active' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
+               onClick={() => setEventFilter('active')}
+             >Active</button>
+             <button 
+               className={`px-3 py-1 text-xs font-bold rounded-md ${eventFilter === 'past' ? 'bg-white shadow text-slate-900' : 'text-slate-500'}`}
+               onClick={() => setEventFilter('past')}
+             >Past</button>
           </div>
         </div>
-        {filteredEvents.map(evt => {
-             const stats = getEventStats(evt.id);
-             const isExpanded = expandedStats === evt.id;
-             return (
-               <div key={evt.id} className="bg-white">
-                  <div className="p-6 border-b hover:bg-slate-50 flex justify-between items-center">
-                      <div>
+        {filteredEvents.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">No {eventFilter} events found.</div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {filteredEvents.map(evt => {
+              const stats = getEventStats(evt.id);
+              const isExpanded = expandedStats === evt.id;
+              
+              return (
+                <div key={evt.id} className="bg-white">
+                   <div className="p-6 hover:bg-slate-50 flex flex-col md:flex-row items-center gap-4">
+                      <div className="flex-grow">
                         <div className="font-bold text-lg text-slate-800">{evt.name}</div>
-                        <div className="text-sm text-slate-500">{new Date(evt.start).toLocaleDateString()} • {stats.ticketCount} Sold • ${stats.revenue.toFixed(2)}</div>
+                        <div className="text-sm text-slate-500 flex gap-4">
+                          <span>{new Date(evt.start).toLocaleDateString()}</span>
+                          <span>{stats.ticketCount} Tickets Sold</span>
+                          <span className="text-green-600 font-bold">${stats.revenue.toFixed(2)} Rev</span>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
+                      
+                      <div className="flex items-center space-x-3">
                          <button onClick={() => setShowEmbed(evt.id)} className="text-slate-400 hover:text-amber-600 flex items-center font-bold px-2" title="Get Embed Code"><Code size={20} /></button>
                          <button onClick={() => setExpandedStats(isExpanded ? null : evt.id)} className={`text-sm font-bold flex items-center px-3 py-2 rounded ${isExpanded ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><BarChart3 size={14} className="mr-2"/> Stats {isExpanded ? <ChevronUp size={14} className="ml-1"/> : <ChevronDown size={14} className="ml-1"/>}</button>
                          <button onClick={() => { setFormData(evt); setIsEditing(true); }} className="text-blue-600 font-bold text-sm">Edit</button>
                          <button onClick={() => handleCloneEvent(evt)} className="text-sm text-slate-500 hover:text-amber-600 flex items-center font-bold px-2"><Copy size={14} className="mr-1"/> Clone</button>
                       </div>
-                  </div>
-                  {isExpanded && (
+                   </div>
+                   
+                   {isExpanded && (
                      <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-5 gap-4 animate-fade-in">
                         <div className="text-center p-3 bg-white rounded shadow-sm">
                            <div className="text-xs text-slate-500 uppercase tracking-wider">Ticket Sales</div>
@@ -575,9 +598,11 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
                         </div>
                      </div>
                    )}
-               </div>
-             )
-        })}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
