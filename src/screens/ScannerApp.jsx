@@ -32,7 +32,7 @@ export default function ScannerApp({ events, orders, db, appId }) {
   };
 
   // --- SCANNER STATE ---
-  const [activeEvent, setActiveEvent] = useState(null); // NEW: Selected Event
+  const [activeEvent, setActiveEvent] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [scannedOrderId, setScannedOrderId] = useState(null); 
   const [isScanning, setIsScanning] = useState(false); 
@@ -101,7 +101,6 @@ export default function ScannerApp({ events, orders, db, appId }) {
       const rawValue = results[0].rawValue;
       const parts = rawValue.split(':');
       const oid = parts[0];
-      // Check if order belongs to current event
       const order = orders.find(o => o.id === oid);
       
       if (order && order.eventId === activeEvent.id) {
@@ -141,18 +140,29 @@ export default function ScannerApp({ events, orders, db, appId }) {
       return list;
   };
 
-  // Filter orders for CURRENT EVENT only
   const eventOrders = orders.filter(o => o.eventId === activeEvent.id && o.status === 'paid');
   
-  // Calculate Stats
-  const totalEventTickets = eventOrders.reduce((acc, o) => acc + (o.items?.reduce((s, i) => s + i.qty, 0) || 0), 0);
-  const totalCheckedIn = eventOrders.reduce((acc, o) => {
-      // count how many keys in checkIns are true
-      const checkedCount = Object.values(o.checkIns || {}).filter(v => v === true).length;
-      return acc + checkedCount;
-  }, 0);
+  // --- STATS CALCULATION (TICKETS ONLY) ---
+  let totalTickets = 0;
+  let checkedInTickets = 0;
 
-  // Filter for Search
+  eventOrders.forEach(order => {
+      let itemIndex = 0; // Global index tracker to match checkIn map
+      order.items?.forEach(item => {
+          const isTicket = item.type === 'ticket';
+          for(let i=0; i<item.qty; i++) {
+              if (isTicket) {
+                  totalTickets++;
+                  // Check if this specific index was checked in
+                  if (order.checkIns?.[itemIndex] === true) {
+                      checkedInTickets++;
+                  }
+              }
+              itemIndex++; // Always increment to keep sync
+          }
+      });
+  });
+
   const filteredOrders = eventOrders.filter(o => {
     const term = searchTerm.toLowerCase();
     return o.customer?.name?.toLowerCase().includes(term) || 
@@ -178,7 +188,7 @@ export default function ScannerApp({ events, orders, db, appId }) {
       );
   }
 
-  // --- ORDER DETAIL MODAL (When Scanned or Clicked) ---
+  // --- ORDER DETAIL MODAL ---
   if (scannedOrder) {
       const checkInList = getCheckInList(scannedOrder);
       const protection = scannedOrder.upsells?.find(u => u.name === 'Ticket Protection');
@@ -215,7 +225,6 @@ export default function ScannerApp({ events, orders, db, appId }) {
       );
   }
 
-  // --- MAIN LIST VIEW (COMPACT) ---
   return (
     <div className="bg-slate-100 min-h-screen pb-20">
       {/* HEADER WITH STATS */}
@@ -226,7 +235,7 @@ export default function ScannerApp({ events, orders, db, appId }) {
                  <div className="font-bold truncate max-w-[200px]">{activeEvent.name}</div>
              </div>
              <div className="text-xs bg-slate-800 px-2 py-1 rounded text-amber-500 font-mono">
-                 {totalCheckedIn} / {totalEventTickets}
+                 {checkedInTickets} / {totalTickets}
              </div>
           </div>
           <div className="px-4 pb-4 flex gap-2">
@@ -267,7 +276,7 @@ export default function ScannerApp({ events, orders, db, appId }) {
          )}
       </div>
       
-      <button onClick={() => setIsScanning(true)} className="fixed bottom-6 right-6 w-14 h-14 bg-amber-500 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-105 transition z-50"><Camera size={28} /></button>
+      {/* REMOVED FLOATING BUTTON HERE AS REQUESTED */}
     </div>
   );
 }

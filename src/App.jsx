@@ -53,7 +53,10 @@ function LandingPage({ navigateTo }) {
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('landing');
+  
+  // 1. MEMORY FIX: Initialize state from LocalStorage if available
+  const [view, setView] = useState(() => localStorage.getItem('app_view') || 'landing');
+  
   const [activeEventId, setActiveEventId] = useState(null);
   const [printOrderId, setPrintOrderId] = useState(null);
   const [events, setEvents] = useState([]);
@@ -65,17 +68,18 @@ export default function App() {
   const params = new URLSearchParams(window.location.search);
   const isEmbed = params.get('mode') === 'embed';
 
+  // 2. MEMORY FIX: Save state whenever it changes
+  useEffect(() => {
+      localStorage.setItem('app_view', view);
+  }, [view]);
+
   // --- AUTO-RESIZER & TRANSPARENCY ---
   useEffect(() => {
     if (isEmbed) {
-        // Force transparent background
         document.body.style.backgroundColor = 'transparent';
         document.documentElement.style.backgroundColor = 'transparent';
 
-        // Resize Observer to broadcast height changes to parent
         const resizeObserver = new ResizeObserver(() => {
-            // We use document.body.scrollHeight for a more accurate "Total Content Height"
-            // This prevents the loop because it measures content, not container
             const height = document.body.scrollHeight;
             window.parent.postMessage({ type: 'setHeight', height: height }, '*');
         });
@@ -128,7 +132,10 @@ export default function App() {
     return () => { unsubEvents(); unsubOrders(); };
   }, [user]); 
 
-  const navigateTo = (newView) => { window.scrollTo(0, 0); setView(newView); };
+  const navigateTo = (newView) => { 
+      window.scrollTo(0, 0); 
+      setView(newView); 
+  };
 
   if (loading) {
       if (isEmbed || view === 'checkout') return <div ref={appRef}><SkeletonCheckout /></div>;
@@ -142,7 +149,6 @@ export default function App() {
   }
 
   return (
-    // FIX: Use min-h-0 if embedded to prevent infinite growth loop
     <div ref={appRef} className={`font-sans text-slate-900 ${isEmbed ? 'bg-transparent min-h-0' : 'bg-slate-50 min-h-screen'}`}>
       {!isEmbed && (
           <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 no-print shadow-lg">
