@@ -16,11 +16,10 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showProtectionModal, setShowProtectionModal] = useState(false);
 
-  // --- CHECK FOR EMBED MODE ---
   const params = new URLSearchParams(window.location.search);
   const isEmbed = params.get('mode') === 'embed';
 
-  // --- SCROLL TO TOP ON STEP CHANGE ---
+  // Scroll to top when step changes
   useEffect(() => {
     window.scrollTo(0, 0);
     window.parent.postMessage({ type: 'scrollToTop' }, '*');
@@ -177,6 +176,7 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
       });
   };
 
+  // --- RENDERERS ---
   const renderStep1 = () => (
     <div className="animate-fade-in">
       <div className="mb-6">
@@ -273,8 +273,9 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
          {availableUpgrades.length > 0 ? (
            <div className="space-y-4 mb-8">
              {availableUpgrades.map(upgrade => (
-               <div key={upgrade.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden group flex flex-col md:flex-row">
-                  <div className="w-32 h-32 flex-shrink-0 bg-slate-200 relative">
+               // FIX: Layout updated for better balance
+               <div key={upgrade.id} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row gap-4 items-start">
+                  <div className="w-24 h-24 flex-shrink-0 rounded-lg bg-slate-200 relative overflow-hidden">
                     {upgrade.image ? (
                       <img src={upgrade.image} alt={upgrade.name} className="w-full h-full object-cover" />
                     ) : (
@@ -282,11 +283,11 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
                     )}
                   </div>
                   
-                  <div className="p-4 flex-grow flex flex-col justify-between">
+                  <div className="flex-grow w-full flex flex-col justify-between mt-1">
                     <div className="flex justify-between items-start">
                        <div>
-                          <h4 className="font-bold text-lg">{upgrade.name}</h4>
-                          <p className="text-slate-500 text-sm mt-1 mb-2 pr-4">{upgrade.description || "No description available."}</p>
+                          <h4 className="font-bold text-lg leading-tight">{upgrade.name}</h4>
+                          <p className="text-slate-500 text-sm mt-1 pr-4">{upgrade.description || "No description available."}</p>
                        </div>
                        <div className="text-right hidden md:block">
                           <div className="text-xs text-slate-400 font-bold uppercase mb-1">Price</div>
@@ -294,8 +295,11 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
                        </div>
                     </div>
                     
-                    <div className="flex items-center justify-between mt-2">
-                      <div className="text-xs text-slate-400 hidden md:block">{upgrade.qty} remaining</div>
+                    <div className="flex items-center justify-between mt-4">
+                      <div className="text-xs text-slate-400 hidden md:block">
+                          {/* FIX: Check Admin Setting for Stock Display */}
+                          {event.showUpgradeQty ? `${upgrade.qty} remaining` : ''}
+                      </div>
                       <div className="flex items-center space-x-3 ml-auto">
                         <div className="font-bold text-lg md:hidden mr-4">${upgrade.price}</div>
                         <button 
@@ -339,14 +343,21 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
            <span>Tickets ({totalTicketQty})</span>
            <span>${ticketTotal.toFixed(2)}</span>
          </div>
-         {upgradeTotal > 0 && (
-            <div className="flex justify-between text-sm">
-                <span>Upgrades</span>
-                <span>${upgradeTotal.toFixed(2)}</span>
-            </div>
-         )}
+         
+         {/* FIX: DETAILED BREAKDOWN LOOP */}
+         {Object.keys(upgradesCart).map(uid => {
+             if (!upgradesCart[uid]) return null;
+             const u = event.upgrades.find(item => item.id.toString() === uid);
+             return (
+                <div key={uid} className="flex justify-between text-sm text-slate-600">
+                    <span>{upgradesCart[uid]}x {u.name}</span>
+                    <span>${(u.price * upgradesCart[uid]).toFixed(2)}</span>
+                </div>
+             );
+         })}
+
          {feeTotal > 0 && (
-            <div className="flex justify-between text-sm">
+            <div className="flex justify-between text-sm pt-2 border-t border-dashed">
                 <span>Processing Fee {event.feeType === 'percent' ? `(${event.feeRate}%)` : ''}</span>
                 <span>${feeTotal.toFixed(2)}</span>
             </div>
@@ -406,12 +417,10 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
           </div>
        </div>
 
-       {/* Terms Modal - FIXED POSITIONING */}
+       {/* Terms Modal */}
        {showTermsModal && (
            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-               {/* Backdrop */}
                <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowTermsModal(false)}></div>
-               {/* Content */}
                <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh] relative z-50">
                    <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
                        <h3 className="font-bold flex items-center"><FileText className="mr-2"/> Terms & Conditions</h3>
@@ -429,7 +438,10 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
     </div>
   );
 
-  // --- Step 4: Ticket Protection ---
+  // --- Step 4 (Protection) & Step 5 (Upsell) & Step 6 (Receipt) ---
+  // These sections are below but were not changed in this update.
+  // Including them for completeness so the file is valid.
+
   const renderStep4 = () => {
       const config = event.protectionConfig || {};
       const percentage = config.percentage || 10;
@@ -481,7 +493,6 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
                 No thanks, I will take the risk
             </button>
 
-            {/* Protection Terms Modal - FIXED POSITIONING */}
             {showProtectionModal && (
                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in text-left">
                    <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowProtectionModal(false)}></div>
@@ -503,7 +514,6 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
       );
   };
 
-  // --- Step 5: Custom Upsell ---
   const renderStep5 = () => {
       const config = event.upsellConfig || {};
       return (
@@ -539,7 +549,6 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
       );
   };
 
-  // Step 6: Receipt
   if (step === 6) {
       return <ReceiptFetcher orderId={orderId} />;
   }
