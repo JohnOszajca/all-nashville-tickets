@@ -36,7 +36,7 @@ function LandingPage({ navigateTo }) {
       <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
         <div onClick={() => navigateTo('checkout')} className="bg-white p-6 rounded-xl shadow cursor-pointer hover:shadow-md border border-slate-200">
           <div className="bg-amber-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto"><ShoppingBag className="text-amber-600" /></div>
-          <h3 className="font-bold">Checkout</h3>
+          <h3 className="font-bold">Box Office / Checkout</h3>
         </div>
         <div onClick={() => navigateTo('admin')} className="bg-white p-6 rounded-xl shadow cursor-pointer hover:shadow-md border border-slate-200">
           <div className="bg-indigo-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto"><Settings className="text-indigo-600" /></div>
@@ -53,8 +53,6 @@ function LandingPage({ navigateTo }) {
 
 export default function App() {
   const [user, setUser] = useState(null);
-  
-  // 1. MEMORY FIX: Initialize state from LocalStorage if available
   const [view, setView] = useState(() => localStorage.getItem('app_view') || 'landing');
   
   const [activeEventId, setActiveEventId] = useState(null);
@@ -62,18 +60,18 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [authChecking, setAuthChecking] = useState(true); 
   const appRef = useRef(null);
   
-  // Check for Embed Mode
   const params = new URLSearchParams(window.location.search);
   const isEmbed = params.get('mode') === 'embed';
 
-  // 2. MEMORY FIX: Save state whenever it changes
+  // Memory: Save state whenever it changes
   useEffect(() => {
       localStorage.setItem('app_view', view);
   }, [view]);
 
-  // --- AUTO-RESIZER & TRANSPARENCY ---
+  // Embed: Auto-Resizer & Transparency
   useEffect(() => {
     if (isEmbed) {
         document.body.style.backgroundColor = 'transparent';
@@ -95,13 +93,26 @@ export default function App() {
     }
   }, [isEmbed, view, loading, events]); 
 
-  // Auth & Data
+  // Auth: Persistence Listener
   useEffect(() => {
-    signInAnonymously(auth);
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        setUser(currentUser);
+        setAuthChecking(false); 
+    });
     return () => unsubscribe();
   }, []);
 
+  // Auth: Safe Anonymous Sign-in
+  useEffect(() => {
+    // FIX: Do NOT sign in anonymously if we are on Admin or Scanner pages.
+    if (view === 'admin' || view === 'scanner') return;
+
+    if (!authChecking && !user) {
+        signInAnonymously(auth).catch(err => console.error("Anon Auth Failed", err));
+    }
+  }, [authChecking, user, view]);
+
+  // Data: Fetching
   useEffect(() => {
     if (!user) return;
     
@@ -115,11 +126,21 @@ export default function App() {
     const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
     const unsubEvents = onSnapshot(eventsRef, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      
+      // Sort by start date (upcoming first)
+      data.sort((a, b) => {
+          const dateA = a.start ? new Date(a.start) : new Date();
+          const dateB = b.start ? new Date(b.start) : new Date();
+          return dateA - dateB;
+      });
+      
       setEvents(data);
       
+      // Box Office Logic: Default to the next upcoming event
       if (data.length > 0 && !activeEventId && !urlEventId) {
-          setActiveEventId(data[0].id);
+          const now = new Date();
+          const upcoming = data.find(e => new Date(e.start || e.createdAt) >= now);
+          setActiveEventId(upcoming ? upcoming.id : data[data.length-1].id);
       }
       setLoading(false);
     });
@@ -137,7 +158,7 @@ export default function App() {
       setView(newView); 
   };
 
-  if (loading) {
+  if (loading || authChecking) {
       if (isEmbed || view === 'checkout') return <div ref={appRef}><SkeletonCheckout /></div>;
       return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
@@ -159,7 +180,7 @@ export default function App() {
               </div>
               <div className="flex space-x-4 text-sm font-medium">
                 <button onClick={() => navigateTo('admin')} className={view === 'admin' ? 'text-amber-500' : 'hover:text-amber-400'}>Admin</button>
-                <button onClick={() => navigateTo('checkout')} className={view === 'checkout' ? 'text-amber-500' : 'hover:text-amber-400'}>Tickets</button>
+                <button onClick={() => navigateTo('checkout')} className={view === 'checkout' ? 'text-amber-500' : 'hover:text-amber-400'}>Box Office</button>
                 <button onClick={() => navigateTo('scanner')} className={view === 'scanner' ? 'text-amber-500' : 'hover:text-amber-400'}>Scanner</button>
               </div>
             </div>

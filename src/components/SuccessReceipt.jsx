@@ -1,6 +1,6 @@
 import React from 'react';
 import { Printer, ShieldCheck, CheckCircle } from 'lucide-react';
-import QRCode from "react-qr-code"; // Import the REAL generator
+import QRCode from "react-qr-code"; 
 
 export default function SuccessReceipt({ order, event }) {
   const allTickets = [];
@@ -91,9 +91,9 @@ export default function SuccessReceipt({ order, event }) {
                     <div key={t.uniqueIndex} className="border-2 border-slate-900 rounded-xl overflow-hidden print-ticket break-inside-avoid page-break">
                         <div className="bg-slate-900 text-white p-4 flex justify-between items-center" style={{WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'}}>
                             <div className="flex items-center gap-4">
-                                {/* PRINTABLE GREEN CHECKMARK FOR TICKET HEADER */}
-                                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-green-600" style={{WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact'}}>
-                                    <CheckCircle size={24} />
+                                {/* PRINTABLE LOGO/ICON HEADER */}
+                                <div className="w-12 h-12 bg-white rounded-full overflow-hidden border-2 border-amber-500 flex items-center justify-center">
+                                    <img src="/logo.jpg" alt="Logo" className="w-full h-full object-cover" onError={(e) => {e.target.onerror = null; e.target.style.display='none'; e.target.parentNode.innerHTML='<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>'}} />
                                 </div>
                                 <div>
                                     <div className="font-bold text-lg">{event?.name || 'Event Ticket'}</div>
@@ -121,7 +121,6 @@ export default function SuccessReceipt({ order, event }) {
                                      viewBox={`0 0 256 256`}
                                    />
                                 </div>
-                                {/* We keep the text ID below it just in case */}
                                 <div className="text-[10px] text-slate-400 font-mono mt-1">{t.uniqueQrData}</div>
                             </div>
                         </div>
