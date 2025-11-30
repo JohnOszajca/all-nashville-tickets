@@ -123,11 +123,16 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
     await new Promise(r => setTimeout(r, 1500)); 
 
     const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
+    
+    // CRITICAL UPDATE: We mark the status as 'paid' IMMEDIATELY here.
+    // If the user abandons the upsell flow, they are still recorded as a sale.
     await updateDoc(orderRef, {
       items: items,
       termsAccepted: true,
       termsAcceptedAt: serverTimestamp(),
       financials: { ticketTotal, upgradeTotal, feeTotal, tax, total: grandTotal },
+      status: 'paid', // Mark as paid immediately
+      paidAt: serverTimestamp()
     });
 
     setStep(4); 
@@ -147,7 +152,7 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
       if (event.upsellConfig?.enabled) {
           setStep(5);
       } else {
-          await finalizeOrder(orderRef);
+          // Order is already marked paid in Step 3, so we just finish
           setStep(6);
       }
       setIsProcessing(false);
@@ -163,17 +168,9 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
        });
     }
     
-    await finalizeOrder(orderRef);
+    // Order is already marked paid in Step 3
     setStep(6); 
     setIsProcessing(false);
-  };
-
-  const finalizeOrder = async (orderRef) => {
-      await updateDoc(orderRef, {
-          status: 'paid',
-          paidAt: serverTimestamp(),
-          checkIns: {}
-      });
   };
 
   // --- RENDERERS ---
@@ -330,13 +327,10 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
            <div className="text-center py-10 bg-slate-50 rounded-xl mb-6 border border-dashed border-slate-300 text-slate-500">No available upgrades for this event.</div>
          )}
   
-         <div className="bg-slate-900 text-white p-6 rounded-xl flex justify-between items-center shadow-xl z-20 sticky bottom-4">
-            <div>
-              <div className="text-slate-400 text-sm">Total with Add-ons</div>
-              <div className="text-2xl font-bold">${(ticketTotal + upgradeTotal).toFixed(2)}</div>
-            </div>
-            <button onClick={() => setStep(3)} className="bg-white text-slate-900 px-6 py-3 rounded-lg font-bold hover:bg-slate-100 flex items-center transition transform active:scale-95">
-              Checkout <ArrowRight size={16} className="ml-2"/>
+         <div className="mt-8">
+            <button onClick={() => setStep(3)} className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 rounded-xl shadow-lg text-lg flex justify-between px-6 items-center transition transform active:scale-95">
+              <span>Checkout</span>
+              <span>${(ticketTotal + upgradeTotal).toFixed(2)} <ArrowRight className="inline ml-1"/></span>
             </button>
          </div>
       </div>
