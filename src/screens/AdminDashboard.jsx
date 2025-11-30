@@ -7,7 +7,7 @@ import { Plus, Trash2, X, Copy, BarChart3, ChevronDown, ChevronUp, Code, Clipboa
 export default function AdminDashboard({ events, orders, db, appId, navigateTo, setPrintOrderId }) {
   // --- AUTH STATE ---
   const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true); // Prevents kicking you out on refresh
+  const [authLoading, setAuthLoading] = useState(true); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -15,7 +15,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => {
         setUser(u);
-        setAuthLoading(false); // Stop loading once we know the status
+        setAuthLoading(false); 
     });
     return () => unsub();
   }, []);
@@ -39,6 +39,9 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
   
   const [formData, setFormData] = useState({
     name: '', location: '', address: '', start: '', end: '',
+    // NEW FIELDS FOR TAGS
+    interestTag: '', 
+    customerTag: '',
     tickets: [{ id: 1, name: 'General Admission', price: 20, qty: 100 }],
     upgrades: [],
     upgradesHeading: 'Enhance Your Experience',
@@ -68,10 +71,8 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
     }
   });
 
-  // --- AUTH LOADING SCREEN ---
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50">Verifying Access...</div>;
 
-  // --- LOGIN SCREEN ---
   if (!user || user.isAnonymous) {
       return (
           <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-xl shadow-lg border border-slate-200">
@@ -98,7 +99,6 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
       );
   }
 
-  // --- DASHBOARD FUNCTIONS ---
   const handleSaveEvent = async () => {
     try {
       const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
@@ -128,7 +128,6 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
     }
   };
 
-  // --- SMART EMBED CODE GENERATOR ---
   const EmbedModal = ({ evtId, onClose }) => {
     const appUrl = window.location.origin; 
     const frameId = `ticket-frame-${evtId}`;
@@ -232,6 +231,22 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
                   <input type="datetime-local" className="w-full p-2 border rounded" value={formData.end} onChange={e => setFormData({...formData, end: e.target.value})} />
+                </div>
+                {/* NEW TAG FIELDS */}
+                <div className="md:col-span-2 border-t pt-4 mt-2">
+                    <h4 className="font-bold text-slate-700 mb-2">TunePipe Integration Tags</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Step 1 Tag (Lead/Interest)</label>
+                            <input type="text" className="w-full p-2 border rounded bg-slate-50" value={formData.interestTag || ''} onChange={e => setFormData({...formData, interestTag: e.target.value})} placeholder="e.g. oxford_ms_interest" />
+                            <p className="text-[10px] text-slate-400 mt-1">Added when they enter email.</p>
+                        </div>
+                        <div>
+                            <label className="block text-xs text-slate-500 mb-1">Step 3 Tag (Customer/Paid)</label>
+                            <input type="text" className="w-full p-2 border rounded bg-slate-50" value={formData.customerTag || ''} onChange={e => setFormData({...formData, customerTag: e.target.value})} placeholder="e.g. oxford_ms_customer" />
+                            <p className="text-[10px] text-slate-400 mt-1">Added when they pay.</p>
+                        </div>
+                    </div>
                 </div>
               </div>
            )}
@@ -512,6 +527,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
         <div className="bg-white p-6 rounded-lg shadow border-l-4 border-amber-500 flex items-center justify-between cursor-pointer hover:bg-amber-50" onClick={() => {
           setFormData({
             name: '', location: '', address: '', start: '', end: '',
+            interestTag: '', customerTag: '', // New Fields Init
             tickets: [{ id: Date.now(), name: 'General Admission', price: 25, qty: 100 }],
             upgrades: [], taxRate: 0, feeRate: 0, feeType: 'flat',
             upgradesHeading: 'Enhance Your Experience', upgradesDescription: 'Customize your night with these exclusive add-ons.',
