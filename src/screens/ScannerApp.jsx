@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { QrCode, Search, ChevronLeft, CheckCircle, ShieldCheck, Tag, Lock, LogOut, Camera, X, Calendar, User } from 'lucide-react';
+import { QrCode, Search, ChevronLeft, CheckCircle, ShieldCheck, Tag, Lock, LogOut, Camera, X, Calendar, User, Printer, FileCheck } from 'lucide-react';
 import { Scanner } from '@yudiel/react-qr-scanner';
 
 export default function ScannerApp({ events, orders, db, appId }) {
@@ -119,10 +119,21 @@ export default function ScannerApp({ events, orders, db, appId }) {
     try {
       const order = orders.find(o => o.id === orderId);
       if (!order) return;
+      
       const newCheckIns = { ...(order.checkIns || {}) };
       newCheckIns[itemIndex] = !currentStatus;
+
+      const updates = { checkIns: newCheckIns };
+
+      // Record who scanned it if checking IN
+      if (!currentStatus && auth.currentUser) {
+          const newMetadata = { ...(order.checkInMetadata || {}) };
+          newMetadata[itemIndex] = auth.currentUser.email;
+          updates.checkInMetadata = newMetadata;
+      }
+
       const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', orderId);
-      await updateDoc(orderRef, { checkIns: newCheckIns });
+      await updateDoc(orderRef, updates);
     } catch (e) {
       console.error(e);
     }
@@ -133,7 +144,12 @@ export default function ScannerApp({ events, orders, db, appId }) {
       let idx = 0;
       order.items?.forEach(item => {
           for(let i=0; i<item.qty; i++) {
-              list.push({ ...item, globalIndex: idx, status: order.checkIns?.[idx] || false });
+              list.push({ 
+                  ...item, 
+                  globalIndex: idx, 
+                  status: order.checkIns?.[idx] || false,
+                  scannedBy: order.checkInMetadata?.[idx]
+              });
               idx++;
           }
       });
@@ -193,32 +209,75 @@ export default function ScannerApp({ events, orders, db, appId }) {
       const checkInList = getCheckInList(scannedOrder);
       const protection = scannedOrder.upsells?.find(u => u.name === 'Ticket Protection');
       
+      // Open the print view in a new tab
+      const handlePrintLink = () => {
+         const url = `${window.location.origin}/?printOrderId=${scannedOrder.id}`;
+         window.open(url, '_blank');
+      };
+
       return (
           <div className="bg-slate-100 min-h-screen pb-20">
               <div className="bg-slate-900 text-white p-4 sticky top-0 z-40 shadow-lg flex justify-between items-center">
                   <button onClick={() => setScannedOrderId(null)} className="text-white flex items-center"><ChevronLeft /> Back</button>
-                  <div className="font-bold">Checking In</div>
+                  <div className="font-bold">Order Details</div>
                   <div className="w-8"></div>
               </div>
               <div className="p-4">
+                  {/* CUSTOMER HEADER */}
                   <div className="bg-white rounded-xl shadow p-4 mb-4 text-center">
                       <h2 className="text-2xl font-bold">{scannedOrder.customer?.name}</h2>
-                      <p className="text-slate-500">Order #{scannedOrder.id.slice(0,6)}</p>
+                      <p className="text-blue-600 font-medium mb-1">{scannedOrder.customer?.email}</p>
+                      <p className="text-slate-400 text-xs uppercase mb-3">Order #{scannedOrder.id.slice(0,6)}</p>
+                      
+                      {/* ADMIN TOOLS */}
+                      <button onClick={handlePrintLink} className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2 px-4 rounded-lg text-sm flex items-center justify-center mx-auto mb-2 border border-slate-300">
+                         <Printer size={16} className="mr-2"/> View Official Receipt
+                      </button>
+
                       {protection && <div className="flex justify-center mt-2"><span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded flex items-center"><ShieldCheck size={12} className="mr-1"/> Protection</span></div>}
                   </div>
+
+                  {/* LEGAL / TERMS AUDIT BOX */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-6 text-xs text-slate-500">
+                     <div className="flex items-center text-slate-700 font-bold mb-1">
+                        <FileCheck size={14} className="mr-1 text-green-600"/> Terms of Service Verification
+                     </div>
+                     <div className="flex justify-between">
+                         <span>Status:</span>
+                         <span className="font-mono text-slate-900">{scannedOrder.termsAccepted ? 'ACCEPTED' : 'N/A'}</span>
+                     </div>
+                     <div className="flex justify-between">
+                         <span>Date:</span>
+                         <span className="font-mono text-slate-900">{scannedOrder.termsAcceptedAt ? new Date(scannedOrder.termsAcceptedAt.seconds * 1000).toLocaleString() : '-'}</span>
+                     </div>
+                  </div>
+
+                  {/* CHECK IN LIST */}
                   <div className="space-y-3">
                       {checkInList.map((item) => (
-                          <div key={item.globalIndex} onClick={() => toggleItemCheckIn(scannedOrder.id, item.globalIndex, item.status)} className={`p-4 rounded-xl border-2 flex justify-between items-center cursor-pointer transition ${item.status ? 'bg-green-50 border-green-500' : 'bg-white border-slate-200'}`}>
-                              <div><div className="font-bold text-lg">{item.name}</div><div className="text-xs text-slate-500 uppercase">{item.type} • Ticket #{item.globalIndex + 1}</div></div>
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${item.status ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-400'}`}><CheckCircle size={20} /></div>
+                          <div key={item.globalIndex} onClick={() => toggleItemCheckIn(scannedOrder.id, item.globalIndex, item.status)} className={`p-4 rounded-xl border-2 flex flex-col cursor-pointer transition ${item.status ? 'bg-green-50 border-green-500' : 'bg-white border-slate-200'}`}>
+                              <div className="flex justify-between items-center w-full">
+                                  <div><div className="font-bold text-lg">{item.name}</div><div className="text-xs text-slate-500 uppercase">{item.type} • Ticket #{item.globalIndex + 1}</div></div>
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${item.status ? 'bg-green-500 text-white' : 'bg-slate-200 text-slate-400'}`}><CheckCircle size={20} /></div>
+                              </div>
+                              {/* DISPLAY WHO SCANNED THIS ITEM */}
+                              {item.status && item.scannedBy && (
+                                  <div className="text-[10px] text-green-600 font-medium mt-2 pt-2 border-t border-green-200 w-full text-right">
+                                      Verified by: {item.scannedBy}
+                                  </div>
+                              )}
                           </div>
                       ))}
                   </div>
                   <button onClick={() => {
                         const updates = {};
-                        checkInList.forEach(i => updates[i.globalIndex] = true);
+                        const newMetadata = {};
+                        checkInList.forEach(i => {
+                             updates[i.globalIndex] = true;
+                             if(auth.currentUser) newMetadata[i.globalIndex] = auth.currentUser.email;
+                        });
                         const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', scannedOrder.id);
-                        updateDoc(orderRef, { checkIns: updates });
+                        updateDoc(orderRef, { checkIns: updates, checkInMetadata: newMetadata });
                     }} className="w-full mt-6 bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800">Check In ALL Items</button>
               </div>
           </div>
@@ -276,7 +335,6 @@ export default function ScannerApp({ events, orders, db, appId }) {
          )}
       </div>
       
-      {/* REMOVED FLOATING BUTTON HERE AS REQUESTED */}
     </div>
   );
 }

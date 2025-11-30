@@ -118,7 +118,12 @@ export default function App() {
     
     const params = new URLSearchParams(window.location.search);
     const urlEventId = params.get('eventId');
-    if (urlEventId) {
+    const urlPrintOrderId = params.get('printOrderId');
+
+    if (urlPrintOrderId) {
+        setPrintOrderId(urlPrintOrderId);
+        setView('print_view');
+    } else if (urlEventId) {
         setActiveEventId(urlEventId);
         setView('checkout');
     }
@@ -127,20 +132,18 @@ export default function App() {
     const unsubEvents = onSnapshot(eventsRef, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       
-      // Sort by start date (upcoming first)
+      // Sort by start date DESCENDING (Most recent/Future first)
       data.sort((a, b) => {
           const dateA = a.start ? new Date(a.start) : new Date();
           const dateB = b.start ? new Date(b.start) : new Date();
-          return dateA - dateB;
+          return dateB - dateA; // REVERSED for Newest First
       });
       
       setEvents(data);
       
-      // Box Office Logic: Default to the next upcoming event
+      // Box Office Logic: Default to the top event (which is now the most recent/upcoming)
       if (data.length > 0 && !activeEventId && !urlEventId) {
-          const now = new Date();
-          const upcoming = data.find(e => new Date(e.start || e.createdAt) >= now);
-          setActiveEventId(upcoming ? upcoming.id : data[data.length-1].id);
+          setActiveEventId(data[0].id);
       }
       setLoading(false);
     });
@@ -171,7 +174,7 @@ export default function App() {
 
   return (
     <div ref={appRef} className={`font-sans text-slate-900 ${isEmbed ? 'bg-transparent min-h-0' : 'bg-slate-50 min-h-screen'}`}>
-      {!isEmbed && (
+      {!isEmbed && view !== 'print_view' && (
           <nav className="bg-slate-900 text-white p-4 sticky top-0 z-50 no-print shadow-lg">
             <div className="max-w-6xl mx-auto flex justify-between items-center">
               <div className="flex items-center space-x-2 font-bold text-xl cursor-pointer" onClick={() => navigateTo('landing')}>

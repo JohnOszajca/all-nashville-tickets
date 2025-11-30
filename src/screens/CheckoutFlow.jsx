@@ -372,10 +372,10 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
              );
          })}
 
-         {/* Fees & Tax */}
+         {/* Fees & Tax - NO PERCENTAGE SHOWN */}
          {feeTotal > 0 && (
             <div className="flex justify-between text-sm text-slate-500 pt-2 border-t border-dashed mt-2">
-                <span>Processing Fee {event.feeType === 'percent' ? `(${event.feeRate}%)` : ''}</span>
+                <span>Processing Fee</span>
                 <span>${feeTotal.toFixed(2)}</span>
             </div>
          )}
