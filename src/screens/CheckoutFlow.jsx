@@ -263,7 +263,7 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
     
     return (
       <div className="animate-fade-in">
-         <button onClick={() => setStep(1)} className="text-slate-500 mb-4 flex items-center hover:text-slate-800"><ChevronLeft size={16} /> Back</button>
+         <button onClick={() => setStep(1)} className="text-slate-500 mb-4 flex items-center hover:text-slate-800 transition"><ChevronLeft size={16} /> Back</button>
          
          <div className="mb-6">
            <h2 className="text-2xl font-bold">{event.upgradesHeading || 'Enhance Your Experience'}</h2>
@@ -273,9 +273,9 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
          {availableUpgrades.length > 0 ? (
            <div className="space-y-4 mb-8">
              {availableUpgrades.map(upgrade => (
-               // FIX: Layout updated for better balance
-               <div key={upgrade.id} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row gap-4 items-start">
-                  <div className="w-24 h-24 flex-shrink-0 rounded-lg bg-slate-200 relative overflow-hidden">
+               <div key={upgrade.id} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col md:flex-row gap-6 items-start">
+                  {/* Fixed Square Image on Left */}
+                  <div className="w-32 h-32 flex-shrink-0 rounded-lg bg-slate-200 relative overflow-hidden self-center md:self-start">
                     {upgrade.image ? (
                       <img src={upgrade.image} alt={upgrade.name} className="w-full h-full object-cover" />
                     ) : (
@@ -283,33 +283,43 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
                     )}
                   </div>
                   
-                  <div className="flex-grow w-full flex flex-col justify-between mt-1">
+                  {/* Description & Controls on Right */}
+                  <div className="flex-grow w-full flex flex-col min-h-[8rem]">
                     <div className="flex justify-between items-start">
                        <div>
-                          <h4 className="font-bold text-lg leading-tight">{upgrade.name}</h4>
-                          <p className="text-slate-500 text-sm mt-1 pr-4">{upgrade.description || "No description available."}</p>
+                          <h4 className="font-bold text-lg leading-tight text-slate-900">{upgrade.name}</h4>
+                          <p className="text-slate-500 text-sm mt-2 pr-4 leading-relaxed">{upgrade.description || "No description available."}</p>
                        </div>
-                       <div className="text-right hidden md:block">
+                       <div className="text-right hidden md:block pl-4">
                           <div className="text-xs text-slate-400 font-bold uppercase mb-1">Price</div>
-                          <div className="font-bold text-lg">${upgrade.price}</div>
+                          <div className="font-bold text-lg text-slate-900">${upgrade.price}</div>
                        </div>
                     </div>
                     
-                    <div className="flex items-center justify-between mt-4">
-                      <div className="text-xs text-slate-400 hidden md:block">
-                          {/* FIX: Check Admin Setting for Stock Display */}
-                          {event.showUpgradeQty ? `${upgrade.qty} remaining` : ''}
+                    <div className="flex items-end justify-between mt-auto pt-4">
+                      <div className="text-xs text-slate-400 font-medium">
+                          {/* Conditional Stock Display */}
+                          {event.showUpgradeQty && (
+                              <span className="flex items-center text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                                  {upgrade.qty} remaining
+                              </span>
+                          )}
                       </div>
+                      
                       <div className="flex items-center space-x-3 ml-auto">
                         <div className="font-bold text-lg md:hidden mr-4">${upgrade.price}</div>
                         <button 
                            onClick={() => setUpgradesCart({...upgradesCart, [upgrade.id]: Math.max(0, (upgradesCart[upgrade.id] || 0) - 1)})}
-                           className="w-8 h-8 rounded bg-slate-100 hover:bg-slate-200 flex items-center justify-center border border-slate-300"><Minus size={16}/></button>
-                        <span className="font-bold w-6 text-center">{upgradesCart[upgrade.id] || 0}</span>
+                           className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center border border-slate-200 transition">
+                           <Minus size={16} className="text-slate-600"/>
+                        </button>
+                        <span className="font-bold w-6 text-center text-lg">{upgradesCart[upgrade.id] || 0}</span>
                         <button 
                            disabled={upgrade.qty <= (upgradesCart[upgrade.id] || 0)}
                            onClick={() => setUpgradesCart({...upgradesCart, [upgrade.id]: (upgradesCart[upgrade.id] || 0) + 1})}
-                           className="w-8 h-8 rounded bg-amber-500 text-white hover:bg-amber-600 flex items-center justify-center shadow"><Plus size={16}/></button>
+                           className="w-8 h-8 rounded-full bg-slate-900 hover:bg-amber-500 text-white flex items-center justify-center shadow transition disabled:bg-slate-300 disabled:shadow-none">
+                           <Plus size={16}/>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -317,15 +327,15 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
              ))}
            </div>
          ) : (
-           <div className="text-center py-10 bg-slate-50 rounded-xl mb-6">No available upgrades for this event.</div>
+           <div className="text-center py-10 bg-slate-50 rounded-xl mb-6 border border-dashed border-slate-300 text-slate-500">No available upgrades for this event.</div>
          )}
   
-         <div className="bg-slate-900 text-white p-6 rounded-xl flex justify-between items-center shadow-xl z-20">
+         <div className="bg-slate-900 text-white p-6 rounded-xl flex justify-between items-center shadow-xl z-20 sticky bottom-4">
             <div>
               <div className="text-slate-400 text-sm">Total with Add-ons</div>
-              <div className="text-2xl font-bold">${ticketTotal + upgradeTotal}</div>
+              <div className="text-2xl font-bold">${(ticketTotal + upgradeTotal).toFixed(2)}</div>
             </div>
-            <button onClick={() => setStep(3)} className="bg-white text-slate-900 px-6 py-3 rounded-lg font-bold hover:bg-slate-100 flex items-center">
+            <button onClick={() => setStep(3)} className="bg-white text-slate-900 px-6 py-3 rounded-lg font-bold hover:bg-slate-100 flex items-center transition transform active:scale-95">
               Checkout <ArrowRight size={16} className="ml-2"/>
             </button>
          </div>
@@ -335,55 +345,65 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
 
   const renderStep3 = () => (
     <div className="animate-fade-in max-w-lg mx-auto">
-       <button onClick={() => setStep(2)} className="text-slate-500 mb-4 flex items-center hover:text-slate-800"><ChevronLeft size={16} /> Back</button>
+       <button onClick={() => setStep(2)} className="text-slate-500 mb-4 flex items-center hover:text-slate-800 transition"><ChevronLeft size={16} /> Back</button>
        <h2 className="text-2xl font-bold mb-6">Payment</h2>
 
        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 space-y-3">
-         <div className="flex justify-between text-sm">
+         <h3 className="font-bold text-slate-800 border-b pb-2 mb-3">Order Summary</h3>
+         
+         {/* Base Tickets */}
+         <div className="flex justify-between text-sm text-slate-700">
            <span>Tickets ({totalTicketQty})</span>
-           <span>${ticketTotal.toFixed(2)}</span>
+           <span className="font-medium">${ticketTotal.toFixed(2)}</span>
          </div>
          
-         {/* FIX: DETAILED BREAKDOWN LOOP */}
+         {/* Detailed Upgrades Breakdown */}
          {Object.keys(upgradesCart).map(uid => {
-             if (!upgradesCart[uid]) return null;
+             const qty = upgradesCart[uid];
+             if (!qty || qty === 0) return null;
              const u = event.upgrades.find(item => item.id.toString() === uid);
+             if (!u) return null;
+             
              return (
                 <div key={uid} className="flex justify-between text-sm text-slate-600">
-                    <span>{upgradesCart[uid]}x {u.name}</span>
-                    <span>${(u.price * upgradesCart[uid]).toFixed(2)}</span>
+                    <span>{qty}x {u.name}</span>
+                    <span className="font-medium">${(u.price * qty).toFixed(2)}</span>
                 </div>
              );
          })}
 
+         {/* Fees & Tax */}
          {feeTotal > 0 && (
-            <div className="flex justify-between text-sm pt-2 border-t border-dashed">
+            <div className="flex justify-between text-sm text-slate-500 pt-2 border-t border-dashed mt-2">
                 <span>Processing Fee {event.feeType === 'percent' ? `(${event.feeRate}%)` : ''}</span>
                 <span>${feeTotal.toFixed(2)}</span>
             </div>
          )}
          {tax > 0 && (
-            <div className="flex justify-between text-sm">
+            <div className="flex justify-between text-sm text-slate-500">
                 <span>Sales Tax ({event.taxRate}%)</span>
                 <span>${tax.toFixed(2)}</span>
             </div>
          )}
-         <div className="border-t pt-3 flex justify-between font-bold text-lg">
+         
+         {/* Grand Total */}
+         <div className="border-t pt-3 flex justify-between font-bold text-xl text-slate-900 mt-2">
            <span>Total Due</span>
            <span>${grandTotal.toFixed(2)}</span>
          </div>
        </div>
 
+       {/* Credit Card Form */}
        <div className="bg-white p-6 rounded-xl shadow-lg border border-slate-200">
           <div className="mb-4 flex items-center space-x-2 text-slate-700">
-             <CreditCard size={20} />
+             <CreditCard size={20} className="text-amber-500" />
              <span className="font-bold">Card Information</span>
           </div>
           <div className="space-y-4">
-            <input type="text" placeholder="Card Number" className="w-full p-3 border rounded-lg bg-slate-50" defaultValue="4242 4242 4242 4242" />
+            <input type="text" placeholder="Card Number" className="w-full p-3 border rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none transition" defaultValue="4242 4242 4242 4242" />
             <div className="flex gap-4">
-               <input type="text" placeholder="MM/YY" className="w-1/2 p-3 border rounded-lg bg-slate-50" defaultValue="12/26" />
-               <input type="text" placeholder="CVC" className="w-1/2 p-3 border rounded-lg bg-slate-50" defaultValue="123" />
+               <input type="text" placeholder="MM/YY" className="w-1/2 p-3 border rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none transition" defaultValue="12/26" />
+               <input type="text" placeholder="CVC" className="w-1/2 p-3 border rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none transition" defaultValue="123" />
             </div>
             
             {/* Terms Checkbox */}
@@ -398,8 +418,8 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
                         if(e.target.checked && errors.terms) setErrors({...errors, terms: null});
                     }}
                 />
-                <label htmlFor="terms" className="text-sm text-slate-600 cursor-pointer">
-                    I understand and agree to the <button onClick={() => setShowTermsModal(true)} className="text-amber-600 underline font-bold">Terms & Conditions</button>. I authorize All Nashville Roadshow to charge my card for the total amount above.
+                <label htmlFor="terms" className="text-sm text-slate-600 cursor-pointer select-none">
+                    I understand and agree to the <button onClick={(e) => {e.preventDefault(); setShowTermsModal(true);}} className="text-amber-600 underline font-bold hover:text-amber-700">Terms & Conditions</button>. I authorize All Nashville Roadshow to charge my card for the total amount above.
                 </label>
             </div>
             
@@ -408,11 +428,11 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
             <button 
               onClick={handlePayment} 
               disabled={isProcessing}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 rounded-lg transition flex justify-center items-center">
+              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 rounded-lg transition transform active:scale-95 flex justify-center items-center shadow-md">
               {isProcessing ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : `Pay $${grandTotal.toFixed(2)}`}
             </button>
-            <div className="text-xs text-center text-slate-400 flex items-center justify-center gap-1">
-               <div className="w-2 h-2 bg-green-500 rounded-full"></div> Secure 256-bit SSL Encrypted
+            <div className="text-xs text-center text-slate-400 flex items-center justify-center gap-1 mt-2">
+               <ShieldCheck size={12} className="text-green-500"/> Secure 256-bit SSL Encrypted
             </div>
           </div>
        </div>
@@ -420,27 +440,23 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
        {/* Terms Modal */}
        {showTermsModal && (
            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
-               <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowTermsModal(false)}></div>
+               <div className="absolute inset-0 bg-black bg-opacity-50 backdrop-blur-sm" onClick={() => setShowTermsModal(false)}></div>
                <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col max-h-[80vh] relative z-50">
                    <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
                        <h3 className="font-bold flex items-center"><FileText className="mr-2"/> Terms & Conditions</h3>
-                       <button onClick={() => setShowTermsModal(false)}><X size={20}/></button>
+                       <button onClick={() => setShowTermsModal(false)} className="hover:text-amber-500 transition"><X size={20}/></button>
                    </div>
                    <div className="p-6 overflow-y-auto flex-grow">
                        <p className="text-sm text-slate-600 whitespace-pre-wrap">{event.termsText || "No terms available."}</p>
                    </div>
                    <div className="p-4 border-t bg-slate-50 text-right">
-                       <button onClick={() => setShowTermsModal(false)} className="bg-slate-900 text-white px-4 py-2 rounded font-bold">Close</button>
+                       <button onClick={() => setShowTermsModal(false)} className="bg-slate-900 text-white px-4 py-2 rounded font-bold hover:bg-slate-700 transition">Close</button>
                    </div>
                </div>
            </div>
        )}
     </div>
   );
-
-  // --- Step 4 (Protection) & Step 5 (Upsell) & Step 6 (Receipt) ---
-  // These sections are below but were not changed in this update.
-  // Including them for completeness so the file is valid.
 
   const renderStep4 = () => {
       const config = event.protectionConfig || {};
