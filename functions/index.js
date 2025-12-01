@@ -7,13 +7,10 @@ const fetch = require("node-fetch");
 admin.initializeApp();
 
 // --- 🟢 MODERN CONFIG LOAD (.env) ---
-// This reads from the .env file we just created.
-// It is safer and much more reliable than the old config vault.
 const stripeKey = process.env.STRIPE_SECRET;
 const emailPass = process.env.EMAIL_PASS;
 const tunePipeKey = process.env.TUNEPIPE_KEY;
 
-// Safety Check: If the .env file wasn't uploaded, log a clear error.
 if (!stripeKey) {
   console.error("FATAL ERROR: Stripe Key is missing from environment variables.");
 }
@@ -159,3 +156,63 @@ exports.syncToTunePipe = functions.firestore
     try { await fetch(ZAPIER_WEBHOOK_URL, { method: "POST", headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) }); } 
     catch (err) { console.error("Zapier Fail:", err); }
 });
+
+// --- 5. 🟢 SMART INVENTORY KEEPER (Handles Sales & Refunds) ---
+exports.updateInventory = functions.firestore
+  .document("artifacts/{appId}/public/data/orders/{orderId}")
+  .onWrite(async (change, context) => {
+      const before = change.before.exists ? change.before.data() : null;
+      const after = change.after.exists ? change.after.data() : null;
+
+      // Logic Check: Did a paid transaction happen, or was it deleted?
+      // 1. New Sale: (Not paid -> Paid)
+      const isNewSale = (before?.status !== 'paid' && after?.status === 'paid');
+      // 2. Full Delete: (Paid -> Deleted)
+      const isRefundDelete = (before?.status === 'paid' && !after);
+      // 3. Partial Edit: (Paid -> Paid, but items changed)
+      const isEdit = (before?.status === 'paid' && after?.status === 'paid');
+
+      if (!isNewSale && !isRefundDelete && !isEdit) return null;
+
+      const eventId = before?.eventId || after?.eventId;
+      if (!eventId) return null;
+
+      const eventRef = admin.firestore().doc(`artifacts/${context.params.appId}/public/data/events/${eventId}`);
+
+      return admin.firestore().runTransaction(async (t) => {
+          const eventDoc = await t.get(eventRef);
+          if (!eventDoc.exists) return;
+
+          const eventData = eventDoc.data();
+          const tickets = eventData.tickets || [];
+          const upgrades = eventData.upgrades || [];
+
+          // Helper to adjust stock
+          const adjustStock = (items, direction) => { // direction: -1 (Sale), 1 (Refund)
+              items.forEach(item => {
+                  if (item.type === 'ticket') {
+                      const idx = tickets.findIndex(t => t.id == item.id);
+                      if (idx > -1) tickets[idx].qty = Math.max(0, tickets[idx].qty + (item.qty * direction));
+                  } else if (item.type === 'upgrade') {
+                      const idx = upgrades.findIndex(u => u.id == item.id);
+                      if (idx > -1) upgrades[idx].qty = Math.max(0, upgrades[idx].qty + (item.qty * direction));
+                  }
+              });
+          };
+
+          if (isNewSale) {
+              adjustStock(after.items || [], -1); // Subtract Stock
+          } else if (isRefundDelete) {
+              adjustStock(before.items || [], 1); // Add Stock Back
+          } else if (isEdit) {
+              // Compare before and after. 
+              // This is complex, so for simplicity in this edit:
+              // We Add ALL 'before' stock back, then Subtract ALL 'after' stock.
+              // This ensures the math is perfect.
+              adjustStock(before.items || [], 1);
+              adjustStock(after.items || [], -1);
+          }
+
+          t.update(eventRef, { tickets, upgrades });
+      });
+  });

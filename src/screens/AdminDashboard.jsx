@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { Plus, Trash2, X, Copy, BarChart3, ChevronDown, ChevronUp, Code, Clipboard, Lock, LogOut } from 'lucide-react';
+import { Plus, Trash2, X, Copy, BarChart3, ChevronDown, ChevronUp, Code, Clipboard, Lock, LogOut, Edit2, Save } from 'lucide-react';
 
 export default function AdminDashboard({ events, orders, db, appId, navigateTo, setPrintOrderId }) {
   // --- AUTH STATE ---
@@ -12,26 +12,10 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  useEffect(() => {
-    const unsub = auth.onAuthStateChanged((u) => {
-        setUser(u);
-        setAuthLoading(false); 
-    });
-    return () => unsub();
-  }, []);
-
-  const handleLogin = async (e) => {
-      e.preventDefault();
-      try {
-          await signInWithEmailAndPassword(auth, email, password);
-          setLoginError('');
-      } catch (err) {
-          setLoginError('Invalid email or password');
-      }
-  };
-
   // --- DASHBOARD STATE ---
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditingEvent, setIsEditingEvent] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null); // 🟢 NEW: Track which order is being managed
+  
   const [expandedStats, setExpandedStats] = useState(null);
   const [activeTab, setActiveTab] = useState('details'); 
   const [eventFilter, setEventFilter] = useState('active'); 
@@ -39,9 +23,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
   
   const [formData, setFormData] = useState({
     name: '', location: '', address: '', start: '', end: '',
-    // NEW FIELDS FOR TAGS
-    interestTag: '', 
-    customerTag: '',
+    interestTag: '', customerTag: '',
     tickets: [{ id: 1, name: 'General Admission', price: 20, qty: 100 }],
     upgrades: [],
     upgradesHeading: 'Enhance Your Experience',
@@ -71,6 +53,162 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
     }
   });
 
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged((u) => {
+        setUser(u);
+        setAuthLoading(false); 
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogin = async (e) => {
+      e.preventDefault();
+      try {
+          await signInWithEmailAndPassword(auth, email, password);
+          setLoginError('');
+      } catch (err) {
+          setLoginError('Invalid email or password');
+      }
+  };
+
+  // --- EVENT ACTIONS ---
+  const handleSaveEvent = async () => {
+    try {
+      const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
+      const payload = { ...formData, taxRate: Number(formData.taxRate), feeRate: Number(formData.feeRate) };
+      if (formData.id) {
+        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', formData.id);
+        await updateDoc(docRef, payload);
+      } else {
+        await addDoc(eventsRef, { ...payload, createdAt: serverTimestamp() });
+      }
+      setIsEditingEvent(false);
+    } catch (e) {
+      alert("Error saving event: " + e.message);
+    }
+  };
+
+  const handleCloneEvent = async (eventToClone) => {
+    try {
+      const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
+      const newEvent = JSON.parse(JSON.stringify(eventToClone));
+      delete newEvent.id; 
+      newEvent.name = `${newEvent.name} (Copy)`;
+      newEvent.createdAt = serverTimestamp();
+      await addDoc(eventsRef, newEvent);
+    } catch (e) {
+      alert("Error cloning event: " + e.message);
+    }
+  };
+
+  // --- 🟢 NEW: ORDER MANAGEMENT ACTIONS ---
+  const handleSaveOrder = async () => {
+      if(!editingOrder) return;
+      try {
+          const orderRef = doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrder.id);
+          // Only updating customer info and items list. 
+          // The backend 'updateInventory' listener handles the stock adjustment automatically.
+          await updateDoc(orderRef, {
+              customer: editingOrder.customer,
+              items: editingOrder.items
+          });
+          setEditingOrder(null);
+          alert("Order updated successfully.");
+      } catch(e) {
+          alert("Error updating order: " + e.message);
+      }
+  };
+
+  const handleDeleteOrder = async () => {
+      if(!editingOrder) return;
+      if(!window.confirm("Are you sure? This will delete the order permanently and RESTOCK the inventory.")) return;
+      try {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'orders', editingOrder.id));
+          setEditingOrder(null);
+      } catch(e) {
+          alert("Error deleting order: " + e.message);
+      }
+  };
+
+  // --- MODALS ---
+  const EmbedModal = ({ evtId, onClose }) => {
+    const appUrl = window.location.origin; 
+    const frameId = `ticket-frame-${evtId}`;
+    const code = `<iframe id="${frameId}" src="${appUrl}/?eventId=${evtId}&mode=embed" width="100%" scrolling="no" style="background: transparent; border: none; overflow: hidden;"></iframe>
+<script>
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'setHeight') {
+      var frame = document.getElementById('${frameId}');
+      if (frame) frame.style.height = e.data.height + 'px';
+    }
+    if (e.data && e.data.type === 'scrollToTop') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+</script>`;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
+            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">
+                <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
+                    <h3 className="font-bold flex items-center"><Code className="mr-2"/> Embed Code</h3>
+                    <button onClick={onClose}><X size={20}/></button>
+                </div>
+                <div className="p-6">
+                    <div className="bg-slate-100 p-3 rounded border border-slate-200 font-mono text-xs break-all mb-4 h-48 overflow-y-auto whitespace-pre-wrap">{code}</div>
+                    <button onClick={() => navigator.clipboard.writeText(code)} className="bg-amber-500 text-white px-4 py-2 rounded font-bold flex items-center float-right"><Clipboard size={16} className="mr-2"/> Copy</button>
+                </div>
+            </div>
+        </div>
+    );
+  };
+
+  // 🟢 NEW: ORDER EDIT MODAL
+  const OrderEditModal = () => {
+      if (!editingOrder) return null;
+      return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
+                      <h3 className="font-bold flex items-center"><Edit2 className="mr-2"/> Manage Order</h3>
+                      <button onClick={() => setEditingOrder(null)}><X size={20}/></button>
+                  </div>
+                  <div className="p-6 overflow-y-auto">
+                      <div className="space-y-4">
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Customer Name</label>
+                              <input type="text" className="w-full p-2 border rounded" value={editingOrder.customer.name} onChange={e => setEditingOrder({...editingOrder, customer: {...editingOrder.customer, name: e.target.value}})} />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Customer Email</label>
+                              <input type="email" className="w-full p-2 border rounded" value={editingOrder.customer.email} onChange={e => setEditingOrder({...editingOrder, customer: {...editingOrder.customer, email: e.target.value}})} />
+                          </div>
+                          <div className="border-t pt-4">
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Ordered Items (Delete to Refund/Restock)</label>
+                              {editingOrder.items?.map((item, idx) => (
+                                  <div key={idx} className="flex justify-between items-center bg-slate-50 p-2 rounded mb-2 border">
+                                      <div>
+                                          <div className="font-bold text-sm">{item.name}</div>
+                                          <div className="text-xs text-slate-500">{item.qty}x @ ${item.price}</div>
+                                      </div>
+                                      <button onClick={() => {
+                                          const newItems = editingOrder.items.filter((_, i) => i !== idx);
+                                          setEditingOrder({...editingOrder, items: newItems});
+                                      }} className="text-red-500 hover:bg-red-100 p-1 rounded"><Trash2 size={16}/></button>
+                                  </div>
+                              ))}
+                              {editingOrder.items?.length === 0 && <div className="text-red-500 text-sm font-bold">No items left. This order is empty.</div>}
+                          </div>
+                      </div>
+                  </div>
+                  <div className="p-4 border-t bg-slate-50 flex justify-between items-center">
+                      <button onClick={handleDeleteOrder} className="text-red-500 text-sm font-bold hover:underline">Delete Entire Order</button>
+                      <button onClick={handleSaveOrder} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold flex items-center"><Save size={16} className="mr-2"/> Save Changes</button>
+                  </div>
+              </div>
+          </div>
+      );
+  };
+
   if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50">Verifying Access...</div>;
 
   if (!user || user.isAnonymous) {
@@ -99,82 +237,6 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
       );
   }
 
-  const handleSaveEvent = async () => {
-    try {
-      const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
-      const payload = { ...formData, taxRate: Number(formData.taxRate), feeRate: Number(formData.feeRate) };
-      if (formData.id) {
-        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'events', formData.id);
-        await updateDoc(docRef, payload);
-      } else {
-        await addDoc(eventsRef, { ...payload, createdAt: serverTimestamp() });
-      }
-      setIsEditing(false);
-    } catch (e) {
-      alert("Error saving event: " + e.message);
-    }
-  };
-
-  const handleCloneEvent = async (eventToClone) => {
-    try {
-      const eventsRef = collection(db, 'artifacts', appId, 'public', 'data', 'events');
-      const newEvent = JSON.parse(JSON.stringify(eventToClone));
-      delete newEvent.id; 
-      newEvent.name = `${newEvent.name} (Copy)`;
-      newEvent.createdAt = serverTimestamp();
-      await addDoc(eventsRef, newEvent);
-    } catch (e) {
-      alert("Error cloning event: " + e.message);
-    }
-  };
-
-  const EmbedModal = ({ evtId, onClose }) => {
-    const appUrl = window.location.origin; 
-    const frameId = `ticket-frame-${evtId}`;
-    
-    const code = `
-<iframe id="${frameId}" src="${appUrl}/?eventId=${evtId}&mode=embed" width="100%" scrolling="no" style="background: transparent; border: none; overflow: hidden;"></iframe>
-<script>
-  window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'setHeight') {
-      var frame = document.getElementById('${frameId}');
-      if (frame) frame.style.height = e.data.height + 'px';
-    }
-    if (e.data && e.data.type === 'scrollToTop') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  });
-</script>
-`.trim();
-    
-    const handleCopy = () => {
-        navigator.clipboard.writeText(code);
-        alert("Smart Embed Code copied!");
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
-            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">
-                <div className="bg-slate-900 text-white p-4 flex justify-between items-center">
-                    <h3 className="font-bold flex items-center"><Code className="mr-2"/> Smart Embed Code</h3>
-                    <button onClick={onClose}><X size={20}/></button>
-                </div>
-                <div className="p-6">
-                    <p className="text-sm text-slate-600 mb-2">Paste this code block into your website (HTML/Code Widget):</p>
-                    <div className="bg-slate-100 p-3 rounded border border-slate-200 font-mono text-xs break-all mb-4 h-48 overflow-y-auto whitespace-pre-wrap">
-                        {code}
-                    </div>
-                    <div className="flex justify-end">
-                        <button onClick={handleCopy} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded font-bold flex items-center">
-                            <Clipboard size={16} className="mr-2"/> Copy Code
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-  };
-
   const totalRevenue = orders.filter(o => o.status === 'paid').reduce((acc, curr) => acc + (curr.financials?.total || 0), 0);
   const totalTicketsSold = orders.filter(o => o.status === 'paid').reduce((acc, curr) => acc + (curr.items?.reduce((sum, item) => sum + item.qty, 0) || 0), 0);
 
@@ -194,321 +256,11 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
     return eventFilter === 'active' ? endDate >= new Date() : endDate < new Date();
   });
 
-  if (isEditing) {
-    return (
-      <div className="bg-white rounded-lg shadow p-6 max-w-4xl mx-auto animate-fade-in">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">Create/Edit Event</h2>
-          <button onClick={() => setIsEditing(false)} className="text-slate-500 hover:text-slate-800"><X /></button>
-        </div>
-        
-        <div className="flex border-b mb-6 overflow-x-auto">
-            {['details', 'tickets', 'upgrades', 'protection', 'one-click', 'settings'].map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 font-medium capitalize whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-amber-500 text-amber-600' : 'text-slate-500'}`}>{tab.replace('-', ' ')}</button>
-            ))}
-        </div>
-        
-        <div className="space-y-6 min-h-[400px]">
-           {/* DETAILS TAB */}
-           {activeTab === 'details' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Event Name</label>
-                  <input type="text" className="w-full p-2 border rounded" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g., All Nashville Roadshow: Summer" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Location Name</label>
-                  <input type="text" className="w-full p-2 border rounded" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} placeholder="e.g., The Ryman" />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Full Address</label>
-                  <input type="text" className="w-full p-2 border rounded" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
-                  <input type="datetime-local" className="w-full p-2 border rounded" value={formData.start} onChange={e => setFormData({...formData, start: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
-                  <input type="datetime-local" className="w-full p-2 border rounded" value={formData.end} onChange={e => setFormData({...formData, end: e.target.value})} />
-                </div>
-                {/* NEW TAG FIELDS */}
-                <div className="md:col-span-2 border-t pt-4 mt-2">
-                    <h4 className="font-bold text-slate-700 mb-2">TunePipe Integration Tags</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs text-slate-500 mb-1">Step 1 Tag (Lead/Interest)</label>
-                            <input type="text" className="w-full p-2 border rounded bg-slate-50" value={formData.interestTag || ''} onChange={e => setFormData({...formData, interestTag: e.target.value})} placeholder="e.g. oxford_ms_interest" />
-                            <p className="text-[10px] text-slate-400 mt-1">Added when they enter email.</p>
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-500 mb-1">Step 3 Tag (Customer/Paid)</label>
-                            <input type="text" className="w-full p-2 border rounded bg-slate-50" value={formData.customerTag || ''} onChange={e => setFormData({...formData, customerTag: e.target.value})} placeholder="e.g. oxford_ms_customer" />
-                            <p className="text-[10px] text-slate-400 mt-1">Added when they pay.</p>
-                        </div>
-                    </div>
-                </div>
-              </div>
-           )}
-
-           {/* TICKETS TAB */}
-           {activeTab === 'tickets' && (
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-semibold text-lg">Ticket Zones</h3>
-                  <button onClick={() => setFormData({...formData, tickets: [...formData.tickets, { id: Date.now(), name: '', price: 0, qty: 0 }]})} className="text-sm text-amber-600 font-medium flex items-center"><Plus size={16} className="mr-1"/> Add Zone</button>
-                </div>
-                {formData.tickets.map((t, idx) => (
-                  <div key={t.id} className="flex gap-2 mb-2 items-end bg-slate-50 p-2 rounded">
-                    <div className="flex-grow">
-                      <label className="text-xs text-slate-500">Zone Name</label>
-                      <input type="text" className="w-full p-2 border rounded text-sm" value={t.name} onChange={e => {
-                        const newTickets = [...formData.tickets];
-                        newTickets[idx].name = e.target.value;
-                        setFormData({...formData, tickets: newTickets});
-                      }} placeholder="Zone Name" />
-                    </div>
-                    <div className="w-24">
-                      <label className="text-xs text-slate-500">Price ($)</label>
-                      <input type="number" className="w-full p-2 border rounded text-sm" value={t.price} onChange={e => {
-                        const newTickets = [...formData.tickets];
-                        newTickets[idx].price = Number(e.target.value);
-                        setFormData({...formData, tickets: newTickets});
-                      }} />
-                    </div>
-                    <div className="w-24">
-                      <label className="text-xs text-slate-500">Qty</label>
-                      <input type="number" className="w-full p-2 border rounded text-sm" value={t.qty} onChange={e => {
-                        const newTickets = [...formData.tickets];
-                        newTickets[idx].qty = Number(e.target.value);
-                        setFormData({...formData, tickets: newTickets});
-                      }} />
-                    </div>
-                    <button onClick={() => {
-                      const newTickets = formData.tickets.filter((_, i) => i !== idx);
-                      setFormData({...formData, tickets: newTickets});
-                    }} className="p-2 text-red-500 hover:bg-red-100 rounded"><Trash2 size={16} /></button>
-                  </div>
-                ))}
-              </div>
-           )}
-
-           {/* UPGRADES TAB */}
-           {activeTab === 'upgrades' && (
-              <div>
-                <div className="mb-6 bg-slate-50 p-4 rounded border">
-                   <h4 className="text-sm font-bold text-slate-700 mb-2">Section Settings (Checkout Step 2)</h4>
-                   <div className="grid gap-3">
-                      <div>
-                        <label className="block text-xs text-slate-500 mb-1">Section Heading</label>
-                        <input type="text" className="w-full p-2 border rounded text-sm" value={formData.upgradesHeading || 'Enhance Your Experience'} onChange={e => setFormData({...formData, upgradesHeading: e.target.value})} />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-500 mb-1">Section Description</label>
-                        <input type="text" className="w-full p-2 border rounded text-sm" value={formData.upgradesDescription || 'Customize your night with these exclusive add-ons.'} onChange={e => setFormData({...formData, upgradesDescription: e.target.value})} />
-                      </div>
-                      {/* QTY TOGGLE */}
-                      <div>
-                         <label className="flex items-center text-sm cursor-pointer text-slate-700">
-                            <input type="checkbox" className="mr-2" checked={formData.showUpgradeQty || false} onChange={e => setFormData({...formData, showUpgradeQty: e.target.checked})} />
-                            Show Remaining Stock to Customers
-                         </label>
-                      </div>
-                   </div>
-                </div>
-
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-semibold text-lg">Products</h3>
-                  <button onClick={() => setFormData({...formData, upgrades: [...formData.upgrades, { id: Date.now(), name: '', description: '', price: 0, qty: 0, image: '' }]})} className="text-sm text-amber-600 font-medium flex items-center"><Plus size={16} className="mr-1"/> Add Item</button>
-                </div>
-                {formData.upgrades.map((u, idx) => (
-                  <div key={u.id} className="flex gap-2 mb-4 items-start bg-slate-50 p-3 rounded border">
-                    <div className="w-16 h-16 bg-slate-200 rounded flex-shrink-0 mt-5 overflow-hidden">
-                      {u.image && <img src={u.image} alt="preview" className="w-full h-full object-cover" />}
-                    </div>
-                    <div className="flex-grow grid grid-cols-1 gap-2">
-                       <div className="flex gap-2">
-                          <div className="flex-grow">
-                              <label className="text-xs text-slate-500">Item Name</label>
-                              <input type="text" className="w-full p-2 border rounded text-sm" value={u.name} onChange={e => {
-                                const newUpgrades = [...formData.upgrades];
-                                newUpgrades[idx].name = e.target.value;
-                                setFormData({...formData, upgrades: newUpgrades});
-                              }} placeholder="Item Name" />
-                          </div>
-                          <div className="w-24">
-                              <label className="text-xs text-slate-500">Price ($)</label>
-                              <input type="number" className="w-full p-2 border rounded text-sm" value={u.price} onChange={e => {
-                                const newUpgrades = [...formData.upgrades];
-                                newUpgrades[idx].price = Number(e.target.value);
-                                setFormData({...formData, upgrades: newUpgrades});
-                              }} />
-                          </div>
-                          <div className="w-24">
-                              <label className="text-xs text-slate-500">Stock</label>
-                              <input type="number" className="w-full p-2 border rounded text-sm" value={u.qty} onChange={e => {
-                                const newUpgrades = [...formData.upgrades];
-                                newUpgrades[idx].qty = Number(e.target.value);
-                                setFormData({...formData, upgrades: newUpgrades});
-                              }} />
-                          </div>
-                          <button onClick={() => {
-                            const newUpgrades = formData.upgrades.filter((_, i) => i !== idx);
-                            setFormData({...formData, upgrades: newUpgrades});
-                          }} className="p-2 text-red-500 hover:bg-red-100 rounded mt-4"><Trash2 size={16} /></button>
-                       </div>
-                       <div className="flex gap-2">
-                           <div className="flex-grow">
-                              <label className="text-xs text-slate-500">Description</label>
-                              <input type="text" className="w-full p-2 border rounded text-sm" value={u.description || ''} onChange={e => {
-                                const newUpgrades = [...formData.upgrades];
-                                newUpgrades[idx].description = e.target.value;
-                                setFormData({...formData, upgrades: newUpgrades});
-                              }} placeholder="Brief description for customers" />
-                           </div>
-                           <div className="flex-grow">
-                              <label className="text-xs text-slate-500">Image URL</label>
-                              <input type="text" className="w-full p-2 border rounded text-sm" value={u.image || ''} onChange={e => {
-                                const newUpgrades = [...formData.upgrades];
-                                newUpgrades[idx].image = e.target.value;
-                                setFormData({...formData, upgrades: newUpgrades});
-                              }} placeholder="https://..." />
-                           </div>
-                       </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-           )}
-
-           {/* PROTECTION TAB */}
-           {activeTab === 'protection' && (
-              <div className="space-y-4">
-                 <div className="flex justify-between items-center">
-                    <h3 className="font-semibold text-lg">Ticket Protection Offer (Step 4)</h3>
-                    <label className="flex items-center text-sm cursor-pointer">
-                       <input type="checkbox" className="mr-2" checked={formData.protectionConfig?.enabled} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, enabled: e.target.checked}})} /> Enable
-                    </label>
-                 </div>
-                 <div className={`space-y-4 p-4 border rounded bg-slate-50 ${!formData.protectionConfig?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="col-span-2">
-                            <label className="block text-xs text-slate-500 mb-1">Offer Title</label>
-                            <input type="text" className="w-full p-2 border rounded" value={formData.protectionConfig?.title || ''} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, title: e.target.value}})} />
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-500 mb-1">Cost (% of Subtotal)</label>
-                            <input type="number" className="w-full p-2 border rounded" value={formData.protectionConfig?.percentage || 10} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, percentage: parseFloat(e.target.value)}})} />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Short Description</label>
-                        <input type="text" className="w-full p-2 border rounded" value={formData.protectionConfig?.description || ''} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, description: e.target.value}})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Selling Points (Displayed on Card)</label>
-                        <textarea className="w-full p-2 border rounded text-sm h-32" value={formData.protectionConfig?.sellingPoints || ''} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, sellingPoints: e.target.value}})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Legal Terms (Popup Content)</label>
-                        <textarea className="w-full p-2 border rounded text-sm h-40" value={formData.protectionConfig?.legalText || ''} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, legalText: e.target.value}})} />
-                    </div>
-                 </div>
-              </div>
-           )}
-
-           {/* ONE CLICK TAB */}
-           {activeTab === 'one-click' && (
-              <div className="space-y-4">
-                 <div className="flex justify-between items-center">
-                    <h3 className="font-semibold text-lg">Post-Purchase Upsell (Step 5)</h3>
-                    <label className="flex items-center text-sm cursor-pointer">
-                       <input type="checkbox" className="mr-2" checked={formData.upsellConfig?.enabled} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, enabled: e.target.checked}})} /> Enable
-                    </label>
-                 </div>
-                 <div className={`space-y-4 p-4 border rounded bg-slate-50 ${!formData.upsellConfig?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Main Heading</label>
-                        <input type="text" className="w-full p-2 border rounded" value={formData.upsellConfig?.title || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, title: e.target.value}})} />
-                    </div>
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Description / Sales Text</label>
-                        <textarea className="w-full p-2 border rounded" rows={2} value={formData.upsellConfig?.description || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, description: e.target.value}})} />
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-xs text-slate-500 mb-1">Item Name</label>
-                            <input type="text" className="w-full p-2 border rounded" value={formData.upsellConfig?.itemName || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, itemName: e.target.value}})} />
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-500 mb-1">Offer Price ($)</label>
-                            <input type="number" className="w-full p-2 border rounded" value={formData.upsellConfig?.price || 0} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, price: parseFloat(e.target.value)}})} />
-                        </div>
-                        <div>
-                            <label className="block text-xs text-slate-500 mb-1">Original Retail Price ($)</label>
-                            <input type="number" className="w-full p-2 border rounded" value={formData.upsellConfig?.retailPrice || 0} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, retailPrice: parseFloat(e.target.value)}})} />
-                            <p className="text-[10px] text-slate-400">Leave 0 to hide strikethrough</p>
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">Image URL</label>
-                        <input type="text" className="w-full p-2 border rounded" value={formData.upsellConfig?.image || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, image: e.target.value}})} />
-                         <p className="text-[10px] text-slate-400">Leave blank to hide image</p>
-                    </div>
-                    <div>
-                        <label className="block text-xs text-slate-500 mb-1">"No Thanks" Text</label>
-                        <input type="text" className="w-full p-2 border rounded" value={formData.upsellConfig?.noThanksText || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, noThanksText: e.target.value}})} />
-                    </div>
-                 </div>
-              </div>
-           )}
-
-           {/* SETTINGS TAB */}
-           {activeTab === 'settings' && (
-              <div className="space-y-4">
-                  <div>
-                   <label className="block text-sm font-medium text-slate-700 mb-1">Sales Tax Rate (%)</label>
-                   <input type="number" className="w-full p-2 border rounded" value={formData.taxRate} onChange={e => setFormData({...formData, taxRate: e.target.value})} placeholder="Leave 0 to hide" />
-                   <p className="text-xs text-slate-400 mt-1">Percentage. Leave 0 to hide line item.</p>
-                 </div>
-                 <div className="pt-4 border-t">
-                   <label className="block text-sm font-medium text-slate-700 mb-2">Processing Fees</label>
-                   <div className="flex gap-4 mb-2">
-                       <label className="flex items-center cursor-pointer">
-                           <input type="radio" name="feeType" value="flat" checked={formData.feeType !== 'percent'} onChange={() => setFormData({...formData, feeType: 'flat'})} className="mr-2" />
-                           Flat Fee ($)
-                       </label>
-                       <label className="flex items-center cursor-pointer">
-                           <input type="radio" name="feeType" value="percent" checked={formData.feeType === 'percent'} onChange={() => setFormData({...formData, feeType: 'percent'})} className="mr-2" />
-                           Percentage (%)
-                       </label>
-                   </div>
-                   <input type="number" className="w-full p-2 border rounded" value={formData.feeRate} onChange={e => setFormData({...formData, feeRate: e.target.value})} placeholder="0" />
-                   <p className="text-xs text-slate-400 mt-1">{formData.feeType === 'percent' ? 'Percent of subtotal (e.g. 3.5 for 3.5%)' : 'Fixed amount added per ticket (e.g. 2.00)'}</p>
-                 </div>
-                 <div className="pt-4 border-t">
-                     <label className="block text-sm font-medium text-slate-700 mb-2">Terms & Conditions Text</label>
-                     <textarea 
-                         className="w-full p-2 border rounded text-sm h-32" 
-                         value={formData.termsText || ''} 
-                         onChange={e => setFormData({...formData, termsText: e.target.value})} 
-                         placeholder="Enter legal text here..." 
-                     />
-                 </div>
-              </div>
-           )}
-        </div>
-
-        <div className="flex justify-end pt-6 border-t mt-6">
-            <button onClick={handleSaveEvent} className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2 rounded font-bold shadow">Save Event</button>
-        </div>
-      </div>
-    );
-  }
-
+  // --- FULL RENDER ---
   return (
     <div className="space-y-6">
       {showEmbed && <EmbedModal evtId={showEmbed} onClose={() => setShowEmbed(null)} />}
+      <OrderEditModal />
 
       <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold text-slate-900">Dashboard</h2>
@@ -527,7 +279,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
         <div className="bg-white p-6 rounded-lg shadow border-l-4 border-amber-500 flex items-center justify-between cursor-pointer hover:bg-amber-50" onClick={() => {
           setFormData({
             name: '', location: '', address: '', start: '', end: '',
-            interestTag: '', customerTag: '', // New Fields Init
+            interestTag: '', customerTag: '',
             tickets: [{ id: Date.now(), name: 'General Admission', price: 25, qty: 100 }],
             upgrades: [], taxRate: 0, feeRate: 0, feeType: 'flat',
             upgradesHeading: 'Enhance Your Experience', upgradesDescription: 'Customize your night with these exclusive add-ons.',
@@ -536,7 +288,7 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
             protectionConfig: { enabled: true, title: 'Protect Your Order', percentage: 10, sellingPoints: '', legalText: '' },
             upsellConfig: { enabled: true, title: 'Wait!', price: 15, retailPrice: 30, itemName: 'VIP Parking' }
           });
-          setIsEditing(true);
+          setIsEditingEvent(true);
           setActiveTab('details');
         }}>
           <div>
@@ -558,41 +310,64 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
         {filteredEvents.map(evt => {
              const stats = getEventStats(evt.id);
              const isExpanded = expandedStats === evt.id;
+             const evtOrders = orders.filter(o => o.eventId === evt.id && o.status === 'paid');
+
              return (
-               <div key={evt.id} className="bg-white">
-                  <div className="p-6 border-b hover:bg-slate-50 flex justify-between items-center">
+               <div key={evt.id} className="bg-white border-b">
+                  <div className="p-6 flex justify-between items-center hover:bg-slate-50">
                       <div>
                         <div className="font-bold text-lg text-slate-800">{evt.name}</div>
                         <div className="text-sm text-slate-500">{new Date(evt.start).toLocaleDateString()} • {stats.ticketCount} Sold • ${stats.revenue.toFixed(2)}</div>
                       </div>
                       <div className="flex gap-2">
                          <button onClick={() => setShowEmbed(evt.id)} className="text-slate-400 hover:text-amber-600 flex items-center font-bold px-2" title="Get Embed Code"><Code size={20} /></button>
-                         <button onClick={() => setExpandedStats(isExpanded ? null : evt.id)} className={`text-sm font-bold flex items-center px-3 py-2 rounded ${isExpanded ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><BarChart3 size={14} className="mr-2"/> Stats {isExpanded ? <ChevronUp size={14} className="ml-1"/> : <ChevronDown size={14} className="ml-1"/>}</button>
-                         <button onClick={() => { setFormData(evt); setIsEditing(true); }} className="text-blue-600 font-bold text-sm">Edit</button>
+                         <button onClick={() => setExpandedStats(isExpanded ? null : evt.id)} className={`text-sm font-bold flex items-center px-3 py-2 rounded ${isExpanded ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><BarChart3 size={14} className="mr-2"/> Orders {isExpanded ? <ChevronUp size={14} className="ml-1"/> : <ChevronDown size={14} className="ml-1"/>}</button>
+                         <button onClick={() => { setFormData(evt); setIsEditingEvent(true); }} className="text-blue-600 font-bold text-sm">Edit</button>
                          <button onClick={() => handleCloneEvent(evt)} className="text-sm text-slate-500 hover:text-amber-600 flex items-center font-bold px-2"><Copy size={14} className="mr-1"/> Clone</button>
                       </div>
                   </div>
                   {isExpanded && (
-                     <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 grid grid-cols-2 md:grid-cols-5 gap-4 animate-fade-in">
-                        <div className="text-center p-3 bg-white rounded shadow-sm">
-                           <div className="text-xs text-slate-500 uppercase tracking-wider">Ticket Sales</div>
-                           <div className="font-bold text-lg">${stats.ticketsRev.toFixed(2)}</div>
+                     <div className="bg-slate-50 p-4 border-t border-slate-100 animate-fade-in">
+                        {/* STATS ROW */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                           <div className="text-center p-3 bg-white rounded shadow-sm"><div className="text-xs text-slate-500 uppercase tracking-wider">Ticket Sales</div><div className="font-bold text-lg">${stats.ticketsRev.toFixed(2)}</div></div>
+                           <div className="text-center p-3 bg-white rounded shadow-sm"><div className="text-xs text-slate-500 uppercase tracking-wider">Upgrades</div><div className="font-bold text-lg">${stats.upgradesRev.toFixed(2)}</div></div>
+                           <div className="text-center p-3 bg-white rounded shadow-sm"><div className="text-xs text-slate-500 uppercase tracking-wider">Fees Collected</div><div className="font-bold text-lg text-slate-600">${stats.feesRev.toFixed(2)}</div></div>
+                           <div className="text-center p-3 bg-white rounded shadow-sm"><div className="text-xs text-slate-500 uppercase tracking-wider">Tax Collected</div><div className="font-bold text-lg text-slate-600">${stats.taxRev.toFixed(2)}</div></div>
+                           <div className="text-center p-3 bg-green-50 border border-green-100 rounded shadow-sm"><div className="text-xs text-green-700 uppercase tracking-wider">Net Total</div><div className="font-bold text-lg text-green-700">${stats.revenue.toFixed(2)}</div></div>
                         </div>
-                        <div className="text-center p-3 bg-white rounded shadow-sm">
-                           <div className="text-xs text-slate-500 uppercase tracking-wider">Upgrades</div>
-                           <div className="font-bold text-lg">${stats.upgradesRev.toFixed(2)}</div>
-                        </div>
-                        <div className="text-center p-3 bg-white rounded shadow-sm">
-                           <div className="text-xs text-slate-500 uppercase tracking-wider">Fees Collected</div>
-                           <div className="font-bold text-lg text-slate-600">${stats.feesRev.toFixed(2)}</div>
-                        </div>
-                        <div className="text-center p-3 bg-white rounded shadow-sm">
-                           <div className="text-xs text-slate-500 uppercase tracking-wider">Tax Collected</div>
-                           <div className="font-bold text-lg text-slate-600">${stats.taxRev.toFixed(2)}</div>
-                        </div>
-                        <div className="text-center p-3 bg-green-50 border border-green-100 rounded shadow-sm">
-                           <div className="text-xs text-green-700 uppercase tracking-wider">Net Total</div>
-                           <div className="font-bold text-lg text-green-700">${stats.revenue.toFixed(2)}</div>
+                        
+                        {/* 🟢 NEW: ORDER MANAGEMENT TABLE */}
+                        <div className="bg-white rounded border shadow-sm overflow-hidden">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-slate-500 uppercase bg-slate-200">
+                                    <tr>
+                                        <th className="px-4 py-3">Customer</th>
+                                        <th className="px-4 py-3">Email</th>
+                                        <th className="px-4 py-3">Items</th>
+                                        <th className="px-4 py-3">Total</th>
+                                        <th className="px-4 py-3 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {evtOrders.map(o => (
+                                        <tr key={o.id} className="border-b hover:bg-blue-50">
+                                            <td className="px-4 py-3 font-bold">{o.customer?.name}</td>
+                                            <td className="px-4 py-3">{o.customer?.email}</td>
+                                            <td className="px-4 py-3 text-xs">
+                                                {o.items?.map((i, idx) => (
+                                                    <div key={idx} className="mb-1">{i.qty}x {i.name}</div>
+                                                ))}
+                                            </td>
+                                            <td className="px-4 py-3 font-bold">${o.financials?.total.toFixed(2)}</td>
+                                            <td className="px-4 py-3 text-right">
+                                                <button onClick={() => setEditingOrder(o)} className="text-blue-600 hover:underline font-bold text-xs border border-blue-200 px-3 py-1 rounded bg-blue-50 hover:bg-blue-100">Manage</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {evtOrders.length === 0 && <tr><td colSpan="5" className="p-8 text-center text-slate-400">No orders found for this event.</td></tr>}
+                                </tbody>
+                            </table>
                         </div>
                      </div>
                    )}
@@ -600,6 +375,317 @@ export default function AdminDashboard({ events, orders, db, appId, navigateTo, 
              )
         })}
       </div>
+
+      {/* FULL EVENT EDIT MODAL (Uncompressed) */}
+      {isEditingEvent && (
+        <div className="bg-white rounded-lg shadow p-6 max-w-4xl mx-auto animate-fade-in fixed inset-0 z-50 overflow-y-auto m-4">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold">Create/Edit Event</h2>
+            <button onClick={() => setIsEditingEvent(false)} className="text-slate-500 hover:text-slate-800"><X /></button>
+          </div>
+          
+          <div className="flex border-b mb-6 overflow-x-auto">
+              {['details', 'tickets', 'upgrades', 'protection', 'one-click', 'settings'].map(tab => (
+                  <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-2 font-medium capitalize whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-amber-500 text-amber-600' : 'text-slate-500'}`}>{tab.replace('-', ' ')}</button>
+              ))}
+          </div>
+          
+          <div className="space-y-6 min-h-[400px]">
+             {/* DETAILS TAB */}
+             {activeTab === 'details' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Event Name</label>
+                    <input type="text" className="w-full p-2 border rounded" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g., All Nashville Roadshow: Summer" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Location Name</label>
+                    <input type="text" className="w-full p-2 border rounded" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} placeholder="e.g., The Ryman" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Full Address</label>
+                    <input type="text" className="w-full p-2 border rounded" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Start Time</label>
+                    <input type="datetime-local" className="w-full p-2 border rounded" value={formData.start} onChange={e => setFormData({...formData, start: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">End Time</label>
+                    <input type="datetime-local" className="w-full p-2 border rounded" value={formData.end} onChange={e => setFormData({...formData, end: e.target.value})} />
+                  </div>
+                  {/* NEW TAG FIELDS */}
+                  <div className="md:col-span-2 border-t pt-4 mt-2">
+                      <h4 className="font-bold text-slate-700 mb-2">TunePipe Integration Tags</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs text-slate-500 mb-1">Step 1 Tag (Lead/Interest)</label>
+                              <input type="text" className="w-full p-2 border rounded bg-slate-50" value={formData.interestTag || ''} onChange={e => setFormData({...formData, interestTag: e.target.value})} placeholder="e.g. oxford_ms_interest" />
+                              <p className="text-[10px] text-slate-400 mt-1">Added when they enter email.</p>
+                          </div>
+                          <div>
+                              <label className="block text-xs text-slate-500 mb-1">Step 3 Tag (Customer/Paid)</label>
+                              <input type="text" className="w-full p-2 border rounded bg-slate-50" value={formData.customerTag || ''} onChange={e => setFormData({...formData, customerTag: e.target.value})} placeholder="e.g. oxford_ms_customer" />
+                              <p className="text-[10px] text-slate-400 mt-1">Added when they pay.</p>
+                          </div>
+                      </div>
+                  </div>
+                </div>
+             )}
+
+             {/* TICKETS TAB */}
+             {activeTab === 'tickets' && (
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-lg">Ticket Zones</h3>
+                    <button onClick={() => setFormData({...formData, tickets: [...formData.tickets, { id: Date.now(), name: '', price: 0, qty: 0 }]})} className="text-sm text-amber-600 font-medium flex items-center"><Plus size={16} className="mr-1"/> Add Zone</button>
+                  </div>
+                  {formData.tickets.map((t, idx) => (
+                    <div key={t.id} className="flex gap-2 mb-2 items-end bg-slate-50 p-2 rounded">
+                      <div className="flex-grow">
+                        <label className="text-xs text-slate-500">Zone Name</label>
+                        <input type="text" className="w-full p-2 border rounded text-sm" value={t.name} onChange={e => {
+                          const newTickets = [...formData.tickets];
+                          newTickets[idx].name = e.target.value;
+                          setFormData({...formData, tickets: newTickets});
+                        }} placeholder="Zone Name" />
+                      </div>
+                      <div className="w-24">
+                        <label className="text-xs text-slate-500">Price ($)</label>
+                        <input type="number" className="w-full p-2 border rounded text-sm" value={t.price} onChange={e => {
+                          const newTickets = [...formData.tickets];
+                          newTickets[idx].price = Number(e.target.value);
+                          setFormData({...formData, tickets: newTickets});
+                        }} />
+                      </div>
+                      <div className="w-24">
+                        <label className="text-xs text-slate-500">Qty</label>
+                        <input type="number" className="w-full p-2 border rounded text-sm" value={t.qty} onChange={e => {
+                          const newTickets = [...formData.tickets];
+                          newTickets[idx].qty = Number(e.target.value);
+                          setFormData({...formData, tickets: newTickets});
+                        }} />
+                      </div>
+                      <button onClick={() => {
+                        const newTickets = formData.tickets.filter((_, i) => i !== idx);
+                        setFormData({...formData, tickets: newTickets});
+                      }} className="p-2 text-red-500 hover:bg-red-100 rounded"><Trash2 size={16} /></button>
+                    </div>
+                  ))}
+                </div>
+             )}
+
+             {/* UPGRADES TAB */}
+             {activeTab === 'upgrades' && (
+                <div>
+                  <div className="mb-6 bg-slate-50 p-4 rounded border">
+                     <h4 className="text-sm font-bold text-slate-700 mb-2">Section Settings (Checkout Step 2)</h4>
+                     <div className="grid gap-3">
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Section Heading</label>
+                          <input type="text" className="w-full p-2 border rounded text-sm" value={formData.upgradesHeading || 'Enhance Your Experience'} onChange={e => setFormData({...formData, upgradesHeading: e.target.value})} />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Section Description</label>
+                          <input type="text" className="w-full p-2 border rounded text-sm" value={formData.upgradesDescription || 'Customize your night with these exclusive add-ons.'} onChange={e => setFormData({...formData, upgradesDescription: e.target.value})} />
+                        </div>
+                        {/* QTY TOGGLE */}
+                        <div>
+                           <label className="flex items-center text-sm cursor-pointer text-slate-700">
+                              <input type="checkbox" className="mr-2" checked={formData.showUpgradeQty || false} onChange={e => setFormData({...formData, showUpgradeQty: e.target.checked})} />
+                              Show Remaining Stock to Customers
+                           </label>
+                        </div>
+                     </div>
+                  </div>
+
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-lg">Products</h3>
+                    <button onClick={() => setFormData({...formData, upgrades: [...formData.upgrades, { id: Date.now(), name: '', description: '', price: 0, qty: 0, image: '' }]})} className="text-sm text-amber-600 font-medium flex items-center"><Plus size={16} className="mr-1"/> Add Item</button>
+                  </div>
+                  {formData.upgrades.map((u, idx) => (
+                    <div key={u.id} className="flex gap-2 mb-4 items-start bg-slate-50 p-3 rounded border">
+                      <div className="w-16 h-16 bg-slate-200 rounded flex-shrink-0 mt-5 overflow-hidden">
+                        {u.image && <img src={u.image} alt="preview" className="w-full h-full object-cover" />}
+                      </div>
+                      <div className="flex-grow grid grid-cols-1 gap-2">
+                         <div className="flex gap-2">
+                            <div className="flex-grow">
+                                <label className="text-xs text-slate-500">Item Name</label>
+                                <input type="text" className="w-full p-2 border rounded text-sm" value={u.name} onChange={e => {
+                                  const newUpgrades = [...formData.upgrades];
+                                  newUpgrades[idx].name = e.target.value;
+                                  setFormData({...formData, upgrades: newUpgrades});
+                                }} placeholder="Item Name" />
+                            </div>
+                            <div className="w-24">
+                                <label className="text-xs text-slate-500">Price ($)</label>
+                                <input type="number" className="w-full p-2 border rounded text-sm" value={u.price} onChange={e => {
+                                  const newUpgrades = [...formData.upgrades];
+                                  newUpgrades[idx].price = Number(e.target.value);
+                                  setFormData({...formData, upgrades: newUpgrades});
+                                }} />
+                            </div>
+                            <div className="w-24">
+                                <label className="text-xs text-slate-500">Stock</label>
+                                <input type="number" className="w-full p-2 border rounded text-sm" value={u.qty} onChange={e => {
+                                  const newUpgrades = [...formData.upgrades];
+                                  newUpgrades[idx].qty = Number(e.target.value);
+                                  setFormData({...formData, upgrades: newUpgrades});
+                                }} />
+                            </div>
+                            <button onClick={() => {
+                              const newUpgrades = formData.upgrades.filter((_, i) => i !== idx);
+                              setFormData({...formData, upgrades: newUpgrades});
+                            }} className="p-2 text-red-500 hover:bg-red-100 rounded mt-4"><Trash2 size={16} /></button>
+                         </div>
+                         <div className="flex gap-2">
+                             <div className="flex-grow">
+                                <label className="text-xs text-slate-500">Description</label>
+                                <input type="text" className="w-full p-2 border rounded text-sm" value={u.description || ''} onChange={e => {
+                                  const newUpgrades = [...formData.upgrades];
+                                  newUpgrades[idx].description = e.target.value;
+                                  setFormData({...formData, upgrades: newUpgrades});
+                                }} placeholder="Brief description for customers" />
+                             </div>
+                             <div className="flex-grow">
+                                <label className="text-xs text-slate-500">Image URL</label>
+                                <input type="text" className="w-full p-2 border rounded text-sm" value={u.image || ''} onChange={e => {
+                                  const newUpgrades = [...formData.upgrades];
+                                  newUpgrades[idx].image = e.target.value;
+                                  setFormData({...formData, upgrades: newUpgrades});
+                                }} placeholder="https://..." />
+                             </div>
+                         </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+             )}
+
+             {/* PROTECTION TAB */}
+             {activeTab === 'protection' && (
+                <div className="space-y-4">
+                   <div className="flex justify-between items-center">
+                      <h3 className="font-semibold text-lg">Ticket Protection Offer (Step 4)</h3>
+                      <label className="flex items-center text-sm cursor-pointer">
+                         <input type="checkbox" className="mr-2" checked={formData.protectionConfig?.enabled} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, enabled: e.target.checked}})} /> Enable
+                      </label>
+                   </div>
+                   <div className={`space-y-4 p-4 border rounded bg-slate-50 ${!formData.protectionConfig?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <div className="grid grid-cols-3 gap-4">
+                          <div className="col-span-2">
+                              <label className="block text-xs text-slate-500 mb-1">Offer Title</label>
+                              <input type="text" className="w-full p-2 border rounded" value={formData.protectionConfig?.title || ''} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, title: e.target.value}})} />
+                          </div>
+                          <div>
+                              <label className="block text-xs text-slate-500 mb-1">Cost (% of Subtotal)</label>
+                              <input type="number" className="w-full p-2 border rounded" value={formData.protectionConfig?.percentage || 10} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, percentage: parseFloat(e.target.value)}})} />
+                          </div>
+                      </div>
+                      <div>
+                          <label className="block text-xs text-slate-500 mb-1">Short Description</label>
+                          <input type="text" className="w-full p-2 border rounded" value={formData.protectionConfig?.description || ''} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, description: e.target.value}})} />
+                      </div>
+                      <div>
+                          <label className="block text-xs text-slate-500 mb-1">Selling Points (Displayed on Card)</label>
+                          <textarea className="w-full p-2 border rounded text-sm h-32" value={formData.protectionConfig?.sellingPoints || ''} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, sellingPoints: e.target.value}})} />
+                      </div>
+                      <div>
+                          <label className="block text-xs text-slate-500 mb-1">Legal Terms (Popup Content)</label>
+                          <textarea className="w-full p-2 border rounded text-sm h-40" value={formData.protectionConfig?.legalText || ''} onChange={e => setFormData({...formData, protectionConfig: {...formData.protectionConfig, legalText: e.target.value}})} />
+                      </div>
+                   </div>
+                </div>
+             )}
+
+             {/* ONE CLICK TAB */}
+             {activeTab === 'one-click' && (
+                <div className="space-y-4">
+                   <div className="flex justify-between items-center">
+                      <h3 className="font-semibold text-lg">Post-Purchase Upsell (Step 5)</h3>
+                      <label className="flex items-center text-sm cursor-pointer">
+                         <input type="checkbox" className="mr-2" checked={formData.upsellConfig?.enabled} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, enabled: e.target.checked}})} /> Enable
+                      </label>
+                   </div>
+                   <div className={`space-y-4 p-4 border rounded bg-slate-50 ${!formData.upsellConfig?.enabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <div>
+                          <label className="block text-xs text-slate-500 mb-1">Main Heading</label>
+                          <input type="text" className="w-full p-2 border rounded" value={formData.upsellConfig?.title || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, title: e.target.value}})} />
+                      </div>
+                      <div>
+                          <label className="block text-xs text-slate-500 mb-1">Description / Sales Text</label>
+                          <textarea className="w-full p-2 border rounded" rows={2} value={formData.upsellConfig?.description || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, description: e.target.value}})} />
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                          <div>
+                              <label className="block text-xs text-slate-500 mb-1">Item Name</label>
+                              <input type="text" className="w-full p-2 border rounded" value={formData.upsellConfig?.itemName || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, itemName: e.target.value}})} />
+                          </div>
+                          <div>
+                              <label className="block text-xs text-slate-500 mb-1">Offer Price ($)</label>
+                              <input type="number" className="w-full p-2 border rounded" value={formData.upsellConfig?.price || 0} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, price: parseFloat(e.target.value)}})} />
+                          </div>
+                          <div>
+                              <label className="block text-xs text-slate-500 mb-1">Original Retail Price ($)</label>
+                              <input type="number" className="w-full p-2 border rounded" value={formData.upsellConfig?.retailPrice || 0} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, retailPrice: parseFloat(e.target.value)}})} />
+                              <p className="text-[10px] text-slate-400">Leave 0 to hide strikethrough</p>
+                          </div>
+                      </div>
+                      <div>
+                          <label className="block text-xs text-slate-500 mb-1">Image URL</label>
+                          <input type="text" className="w-full p-2 border rounded" value={formData.upsellConfig?.image || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, image: e.target.value}})} />
+                           <p className="text-[10px] text-slate-400">Leave blank to hide image</p>
+                      </div>
+                      <div>
+                          <label className="block text-xs text-slate-500 mb-1">"No Thanks" Text</label>
+                          <input type="text" className="w-full p-2 border rounded" value={formData.upsellConfig?.noThanksText || ''} onChange={e => setFormData({...formData, upsellConfig: {...formData.upsellConfig, noThanksText: e.target.value}})} />
+                      </div>
+                   </div>
+                </div>
+             )}
+
+             {/* SETTINGS TAB */}
+             {activeTab === 'settings' && (
+                <div className="space-y-4">
+                    <div>
+                     <label className="block text-sm font-medium text-slate-700 mb-1">Sales Tax Rate (%)</label>
+                     <input type="number" className="w-full p-2 border rounded" value={formData.taxRate} onChange={e => setFormData({...formData, taxRate: e.target.value})} placeholder="Leave 0 to hide" />
+                     <p className="text-xs text-slate-400 mt-1">Percentage. Leave 0 to hide line item.</p>
+                   </div>
+                   <div className="pt-4 border-t">
+                     <label className="block text-sm font-medium text-slate-700 mb-2">Processing Fees</label>
+                     <div className="flex gap-4 mb-2">
+                         <label className="flex items-center cursor-pointer">
+                             <input type="radio" name="feeType" value="flat" checked={formData.feeType !== 'percent'} onChange={() => setFormData({...formData, feeType: 'flat'})} className="mr-2" />
+                             Flat Fee ($)
+                         </label>
+                         <label className="flex items-center cursor-pointer">
+                             <input type="radio" name="feeType" value="percent" checked={formData.feeType === 'percent'} onChange={() => setFormData({...formData, feeType: 'percent'})} className="mr-2" />
+                             Percentage (%)
+                         </label>
+                     </div>
+                     <input type="number" className="w-full p-2 border rounded" value={formData.feeRate} onChange={e => setFormData({...formData, feeRate: e.target.value})} placeholder="0" />
+                     <p className="text-xs text-slate-400 mt-1">{formData.feeType === 'percent' ? 'Percent of subtotal (e.g. 3.5 for 3.5%)' : 'Fixed amount added per ticket (e.g. 2.00)'}</p>
+                   </div>
+                   <div className="pt-4 border-t">
+                       <label className="block text-sm font-medium text-slate-700 mb-2">Terms & Conditions Text</label>
+                       <textarea 
+                           className="w-full p-2 border rounded text-sm h-32" 
+                           value={formData.termsText || ''} 
+                           onChange={e => setFormData({...formData, termsText: e.target.value})} 
+                           placeholder="Enter legal text here..." 
+                       />
+                   </div>
+                </div>
+             )}
+          </div>
+
+          <div className="flex justify-end pt-6 border-t mt-6">
+              <button onClick={handleSaveEvent} className="bg-amber-500 hover:bg-amber-600 text-white px-6 py-2 rounded font-bold shadow">Save Event</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
