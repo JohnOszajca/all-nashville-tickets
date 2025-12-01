@@ -6,13 +6,17 @@ const fetch = require("node-fetch");
 
 admin.initializeApp();
 
-// --- 🟢 SAFETY CHECK: LOAD CONFIGURATION ---
-// This prevents the "undefined" error during deployment
-const config = functions.config();
+// --- 🟢 MODERN CONFIG LOAD (.env) ---
+// This reads from the .env file we just created.
+// It is safer and much more reliable than the old config vault.
+const stripeKey = process.env.STRIPE_SECRET;
+const emailPass = process.env.EMAIL_PASS;
+const tunePipeKey = process.env.TUNEPIPE_KEY;
 
-const stripeKey = (config.stripe && config.stripe.secret) ? config.stripe.secret : "sk_test_placeholder";
-const emailPass = (config.email && config.email.pass) ? config.email.pass : "app_pass_placeholder";
-const tunePipeKey = (config.tunepipe && config.tunepipe.key) ? config.tunepipe.key : "tp_key_placeholder";
+// Safety Check: If the .env file wasn't uploaded, log a clear error.
+if (!stripeKey) {
+  console.error("FATAL ERROR: Stripe Key is missing from environment variables.");
+}
 
 const stripe = require("stripe")(stripeKey);
 
@@ -23,8 +27,6 @@ const transporter = nodemailer.createTransport({
     pass: emailPass 
   }
 });
-
-const TUNEPIPE_API_KEY = tunePipeKey; 
 
 // --- 1. CREATE PAYMENT INTENT ---
 exports.createPaymentIntent = functions.https.onRequest((req, res) => {
@@ -38,7 +40,7 @@ exports.createPaymentIntent = functions.https.onRequest((req, res) => {
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount * 100),
         currency: "usd",
-        customer: customer.id,
+        customer: customer.id, 
         setup_future_usage: 'off_session', 
         automatic_payment_methods: { enabled: true },
       });
@@ -151,7 +153,6 @@ exports.syncToTunePipe = functions.firestore
     let status = "Lead";
     if (after.status === 'paid') { tagToSend = customerTag; status = "Customer"; }
 
-    // 🟢 YOUR ZAPIER WEBHOOK URL
     const ZAPIER_WEBHOOK_URL = "https://hooks.zapier.com/hooks/catch/25550080/ukiuuy7/"; 
 
     const payload = { email: after.customer.email, name: after.customer.name, tag: tagToSend, status: status, event_name: after.eventName, subscribed: true };

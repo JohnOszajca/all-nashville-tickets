@@ -6,7 +6,7 @@ import { Calendar, MapPin, Minus, Plus, AlertCircle, CreditCard, ArrowRight, Che
 import SuccessReceipt from '../components/SuccessReceipt';
 
 // 🔴 REPLACE WITH YOUR PUBLISHABLE KEY
-const stripePromise = loadStripe("pk_test_REPLACE_ME_WITH_YOUR_KEY"); 
+const stripePromise = loadStripe("pk_test_51QPnuBJqup7D6zrIIUj0Qj1AdjCezAOuYiCQzsJKe9w9MUEnGjJlnXRwBH4A2rB222k3mmxsAWi7FDLrxhUiINh600s0rzA1BN"); 
 
 // --- INTERNAL COMPONENT: THE CREDIT CARD FORM ---
 function PaymentForm({ total, onSuccess, isProcessing, setIsProcessing, acceptedTerms, setAcceptedTerms, setShowTermsModal, errors, setErrors }) {
@@ -197,6 +197,14 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
              body: JSON.stringify({ amount: grandTotal, currency: 'usd', email: customer.email, name: customer.name })
          });
          const data = await response.json();
+
+         // --- BUG FIX: Check for errors before moving forward ---
+         if (!response.ok || data.error || !data.clientSecret) {
+            console.error("Payment Init Error:", data);
+            alert("Payment System Error: " + (data.error || "Could not initialize payment."));
+            setIsProcessing(false);
+            return; // STOP HERE!
+         }
          
          setClientSecret(data.clientSecret);
          setStripeCustomerId(data.customerId); // 🟢 Save Customer ID for upsells
@@ -204,7 +212,7 @@ export default function CheckoutFlow({ events, db, appId, activeEventId }) {
          setStep(3);
      } catch (e) {
          console.error("Stripe Setup Failed", e);
-         alert("Could not initialize payment. Please check your internet.");
+         alert("Network Error. Could not reach the payment server.");
      }
      setIsProcessing(false);
   };
